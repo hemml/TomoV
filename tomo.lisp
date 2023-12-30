@@ -265,30 +265,6 @@
            (lambda (,val)
              (if ,val ,true ,false)))))))
 
-(defun-f set-db ()
-  (setup-indexed-db (db "TestDB")
-    (make-instance 'idb-object-store :connection db :name "tbl1"))
-  nil)
-
-(defun-f test-add ()
-  (indexed-db-add "TestDB" "tbl1" "my-key2" "sdrthdsfhdsfghdfg"
-    :when-ok (lambda () (jslog "ADD OK!"))
-    :when-err (lambda (err) (jslog "ADD ERROR:" err))))
-
-(defun-f test-get ()
-  (indexed-db-get (val ("TestDB" "tbl1" "my-key"))
-    (jslog val)))
-
-(defun-f test-get-keys ()
-  (indexed-db-get-all-keys (val ("TestDB" "tbl1"))
-    (jslog (position "k1" val :test #'equal))))
-
-(defun-f test-if ()
-  (if-idb-key ("TestDB" "tbl1" "my-key")
-    (jslog "KEY EXISTS")
-    (jslog "KEY DOES NOT EXISTS")))
-
-
 (load "macros.lisp")
 (load "settings.lisp")
 (load "trail.lisp")
