@@ -1,7 +1,7 @@
 (in-package :tomo)
 
-(setf omg::*ssl-key* #P"privkey1.pem")
-(setf omg::*ssl-cert* #P"fullchain1.pem")
+;(setf omg::*ssl-key* #P"privkey1.pem")
+;(setf omg::*ssl-cert* #P"fullchain1.pem")
 
 (defparameter-f *app* nil)
 
@@ -202,18 +202,16 @@
                           "In memory of <a href='https://ui.adsabs.harvard.edu/search/q=author%3A%22Tomov%2C%20N.%20A.%22&sort=date%20desc%2C%20bibcode%20desc&p_=0' target=_blank>Nikolay Tomov</a>, an astronomer and our friend.")
                       :append-element
                         (create-element "div" :|innerHTML|
-                          "Sources are available at <a href='https://github.com/hemml/TomoV' target=_blank>https://github.com/hemml/TomoV</a> under a MIT License. A paper is in preparation.")))))))
-
-
-(defun-f init-gui ()
-  (disable-back-button)
-  (prevent-page-close)
-  (execute-after 0.1 #'show-main-page))
+                          "Sources are available at <a href='https://github.com/hemml/TomoV' target=_blank>https://github.com/hemml/TomoV</a> under a MIT License. A paper is in preparation.")
+                      :append-element
+                        (create-element "div" :|innerHTML|
+                          "Supported by joint Russian-Bulgarian grant RFBR 20-52-18015 / KP-06-Russia/2-2020")))))))
 
 (defun-f my-boot ()
   (if (not *app*)
       (progn
         (prevent-page-close)
+        (disable-back-button)
         (register-hash-cb "#devel"
           (lambda ()
             (if (not (equal (get-my-version) "devel"))

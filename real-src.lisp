@@ -169,9 +169,9 @@
                      (remake-profile fi))
                    (rm (ev)
                      (remove-file fi))
-                   (set-b-state ()
-                     (setf (jscl::oget but "innerHTML") (if state "update" "remove"))
-                     (setf (jscl::oget but "onclick") (if state #'upd #'rm))
+                   (set-b-state (&optional init)
+                     (setf (jscl::oget but "innerHTML") (if (and state (not init)) "update" "remove"))
+                     (setf (jscl::oget but "onclick") (if (and state (not init)) #'upd #'rm))
                      (setf (jscl::oget but "style" "background") (if state clr1 clr2))
                      (loop for td in tdl do
                        (setf (jscl::oget td "style" "background") (if enabled (if state clr1 clr2) clr3))))
@@ -179,7 +179,7 @@
                      (let ((td (apply #'create-element (cons "td" args))))
                        (push td tdl)
                        td)))
-            (set-b-state)
+            (set-b-state t)
             (create-element "tr"
               :append-element
                 (make-td :|innerHTML| name
