@@ -1,7 +1,7 @@
 # TomoV
 Doppler tomography with ART reconstruction method
 
-The working version available at https://tiomo-v.inasan.ru, all feedback please send to pasha@inasan.ru.
+The working version available at https://tomo-v.inasan.ru, all feedback please send to pasha@inasan.ru.
 
 A paper is in preparation.
 
