@@ -253,6 +253,7 @@
 (defvar old-init #'omg-init)
 
 (defun omg-init (port)
+  (setf omg::*use-wss* t)
   (funcall old-init port))
 
 (set-boot '(my-boot))
