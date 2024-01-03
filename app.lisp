@@ -205,7 +205,7 @@
                           "Sources are available at <a href='https://github.com/hemml/TomoV' target=_blank>https://github.com/hemml/TomoV</a> under a MIT License. A paper is in preparation.")
                       :append-element
                         (create-element "div" :|innerHTML|
-                          "Supported by joint Russian-Bulgarian grant RFBR 20-52-18015 / KP-06-Russia/2-2020")))))))
+                          "Supported by joint Russian-Bulgarian grant RFBR 20-52-18015 / KP-06-Russia/2-2020 (Bulgarian National Science Fund).")))))))
 
 (defun-f my-boot ()
   (if (not *app*)
