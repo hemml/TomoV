@@ -58,7 +58,7 @@
     (if redraw (redraw l))))
 
 (defmethod-f initialize-instance :after ((l obj-list))
-  (update l))
+  (update l :redraw t))
 
 (defmethod-f render-widget :after ((d choice-dialog))
   (append-element
