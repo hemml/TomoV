@@ -207,9 +207,23 @@
                         (create-element "div" :|innerHTML|
                           "Supported by joint Russian-Bulgarian grant RFBR 20-52-18015 / KP-06-Russia/2-2020 (Bulgarian National Science Fund).")))))))
 
+(defparameter-f *loading-banner* nil)
+
+(defun-f show-loading ()
+  (setf *loading-banner* ((jscl::oget (jscl::%js-vref "document") "createElement") "span"))
+  (setf (jscl::oget *loading-banner* "innerHTML") "...")
+  ((jscl::oget (jscl::%js-vref "document") "body" "appendChild") *loading-banner*)
+  nil)
+
+(defun-f hide-loading ()
+  (remove-element *loading-banner*)
+  (remove-element (js-get-element-by-id "loadBanner"))
+  nil)
+
 (defun-f my-boot ()
   (if (not *app*)
       (progn
+        (show-loading)
         (prevent-page-close)
         (disable-back-button)
         (register-hash-cb "#devel"
@@ -224,7 +238,8 @@
         (setup-indexed-db (db "Tomo")
           (make-instance 'idb-object-store :connection db :name "sources"))
         (setf *app* (make-instance 'app))
-        (append-element (render-widget *app*)))))
+        (append-element (render-widget *app*))
+        (hide-loading))))
 
 (defun-f show-commit-notify (cookie-name version)
   (show-notification
@@ -257,3 +272,5 @@
   (funcall old-init port))
 
 (set-boot '(my-boot))
+
+(set-root-html "<span id='loadBanner'>TomoV is loading, please wait...</span>")
