@@ -184,7 +184,7 @@
                         `(let ((grad-l (/ 1.0 (sqrt (loop for x across ,grad sum (sqr x)))))
                                (adelta (max 1.e-3 (,del s)))
                                (c0 (chi (source s) s))
-                               (old-adsp (if f-a (map 'vector #',fn adsp)))
+                               (old-adsp (map 'vector #',fn adsp))
                                (smooth-cf 0.3))
                            (labels ((apply-grad ()
                                       (loop for i below ldsp do
