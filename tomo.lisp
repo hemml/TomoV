@@ -8,7 +8,8 @@
 (defparameter-f *noize-treshhold* 0.0)
 
 (defun update-from-git ()
-  (when (run '(and (cd "/home/omg/quicklisp/local-projects")
-                   (rm -fr "TomoV")
-                   (git clone "https://github.com/hemml/TomoV.git"))))
-  (ql:quickload :tomo-v))
+  (inferior-shell:run '(and (cd "/home/omg/")
+                            (rm -fr "TomoV")
+                            (git clone "https://github.com/hemml/TomoV.git")))
+  (push (make-pathname :directory '(:absolute "home/omg/TomoV")) asdf:*central-registry*)
+  (asdf:load-system :tomo-v))
