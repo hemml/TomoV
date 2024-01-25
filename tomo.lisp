@@ -7,11 +7,8 @@
 
 (defparameter-f *noize-treshhold* 0.0)
 
-(load "macros.lisp")
-(load "settings.lisp")
-(load "trail.lisp")
-(load "profiles.lisp")
-(load "art-solver.lisp")
-(load "sample-src.lisp")
-(load "real-src.lisp")
-(load "app.lisp")
+(defun update-from-git ()
+  (when (run '(and (cd "/home/omg/quicklisp/local-projects")
+                   (rm -fr "TomoV")
+                   (git clone "https://github.com/hemml/TomoV.git"))))
+  (ql:quickload :tomo-v))
