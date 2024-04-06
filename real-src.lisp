@@ -404,26 +404,29 @@
 
 (defun-f roche-pot (x y q)
   (let ((q1 (1+ q)))
-    (* -1 (+ (/ q (sqrt (+ (sqr x) (sqr y))))
-             (/ 1 (sqrt (+ (sqr (- x 1)) (sqr y))))
-             (* 0.5 q1 (+ (sqr (- x (/ 1 q1)))
-                          (sqr y)))))))
+    (- (+ (/ 2 (* q1 (sqrt (+ (sqr x) (sqr y)))))
+          (/ (* 2 q)
+             (* q1 (sqrt (+ (sqr (- 1 x)) (sqr y)))))
+          (sqr (- x (/ q q1)))
+          (sqr y)))))
 
-(defun-f roche-force (x q)
-  (let ((q1 (1+ q)))
-    (* -1 (+ (/ (* q x) (expt x 3))
-             (/ (- x 1) (expt (- x 1) 3))
-             (* q1 (- x (/ 1 q1)))))))
+(defun-f roche-force (x y q)
+  (values (+ (/ (* -1 x) (expt (+ (sqr x) (sqr y)) 1.5))
+             (/ (* q -1 (- x 1)) (expt (+ (sqr (- x 1)) (sqr y)) 1.5))
+             x
+             (- q))
+          (+ (/ (* -1 y) (expt (+ (sqr x) (sqr y)) 1.5))
+             (/ (* q -1 y) (expt (+ (sqr (- x 1)) (sqr y)) 1.5))
+             y)))
 
 (defun-f find-lp (x1 x2 q)
   (loop do
     (let ((x3 (* 0.5 (+ x1 x2))))
-      (jslog x1 x2 x3 (roche-force x3 q))
-      (if (< (roche-force x3 q) 0)
+      (if (< (roche-force x3 0 q) 0)
           (setf x1 x3)
           (setf x2 x3))
       (when (< (- x2 x1) 1e-5)
-        (return-from find-lp (values x3 (roche-pot x3 0 q)))))))
+        (return-from find-lp (values x3 (roche-pot x3 0 q)))))))0
 
 (defun-f get-roche-lobe (q &optional (x0 0) (y0 0))
   (multiple-value-bind (xl1 l1pot) (find-lp 0 1 q)
@@ -432,10 +435,9 @@
                          q))
            (rp1 (abs (- x0 xl1)))
            (rp2 (abs (- x0 xl2))))
-      (jslog xl1 xl2 rp1 rp2)
       (labels ((find-pot (phi r1 r2)
                  (let ((r3 (* 0.5 (+ r1 r2))))
-                   (if (< (- r2 r1) 1e-3)
+                   (if (< (- r2 r1) 1e-6)
                        (values (+ x0 (* r3 (jscos phi)))
                                (+ y0 (* r3 (jssin phi))))
                        (if (> l1pot
@@ -449,7 +451,289 @@
             (prog1
               (apply #'cons (multiple-value-list (find-pot phi 0 (if (> (roche-pot (+ x0 (* rp2 (jscos phi)))
                                                                                    (+ y0 (* rp2 (jssin phi)))
-                                                                                   q))
+                                                                                   q)
+                                                                        l1pot)
                                                                      rp2
                                                                      rp1))))
-              (setf phi (+ phi (* 0.01 pi))))))))))
+              (incf phi (* 0.005 pi)))))))))
+
+(defclass-f roche-plot (plot)
+  ((q :initarg :qprop
+      :accessor qprop)))
+
+; (defclass-f l1-stream-plot (plot)
+;   ((q :initarg :qprop
+;       :accessor qprop)
+;    (v0 :initarg :v0
+;        :accessor v0)))
+
+(defclass-f roche-v-plot (plot)
+  ((q :initarg :qprop
+      :accessor qprop)
+   (aomega :initarg :aomega
+           :accessor aomega)))
+
+(defclass-f disk-v-plot (plot)
+  ((q :initarg :qprop
+      :accessor qprop)
+   (aomega :initarg :aomega
+           :accessor aomega)
+   (primary :initarg :primary
+            :accessor primary)
+   (fill :initform nil
+         :accessor fill)))
+
+(defclass-f disk-plot (plot)
+  ((q :initarg :qprop
+      :accessor qprop)
+   (aomega :initarg :aomega
+           :accessor aomega)
+   (primary :initarg :primary
+            :accessor primary)
+   (fill :initform nil
+         :accessor fill)
+   (x0 :accessor x0)
+   (rd :accessor rd)))
+
+(defmethod-f initialize-instance :after ((d disk-plot) &rest args)
+  (setf (slot-value d 'x0) (if (primary d) 0 1))
+  (setf (slot-value d 'rd) (let ((q (if (primary d) (qprop d) (/ 1 (qprop d)))))
+                             (/ 0.6 (1+ q)))))
+
+(defmethod-f make-curve ((p roche-plot))
+  `(path :|stroke| ,(color p)
+         :|stroke-width| "1px"
+         :|vector-effect| "non-scaling-stroke"
+         :|fill| "none"
+         :|d| ,(apply #'jscl::concat
+                      (labels ((mklob (lb)
+                                 (cons (format nil "M~A,~A " (caar lb) (cdar lb))
+                                       (mapcar (lambda (p)
+                                                 (format nil "L~A,~A " (car p) (cdr p)))
+                                               (cdr lb)))))
+                        (append (mklob (get-roche-lobe (qprop p) 0.0))
+                                (mklob (get-roche-lobe (qprop p) 1.0)))))))
+
+; (defmethod-f make-curve ((p l1-stream-plot))
+;   `(path :|stroke| ,(color p)
+;          :|stroke-width| "1px"
+;          :|vector-effect| "non-scaling-stroke"
+;          :|fill| "none"
+;          :|d| ,(apply #'jscl::concat
+;                       (let ((x (find-lp 0 1 (qprop p)))
+;                             (y 0)
+;                             (vx (* 1e-6 (vp p)))
+;                             (vy 0))))))
+
+
+(defmethod-f make-curve ((p roche-v-plot))
+  (let ((q (qprop p))
+        (aomega (aomega p)))
+    `(path :|stroke| ,(color p)
+           :|stroke-width| "1px"
+           :|vector-effect| "non-scaling-stroke"
+           :|fill| "none"
+           :|d| ,(apply #'jscl::concat
+                        (labels ((mklob (lb)
+                                   (cons (format nil "M~A,~A " (caar lb) (cdar lb))
+                                         (mapcar (lambda (p)
+                                                   (format nil "L~A,~A " (car p) (cdr p)))
+                                                 (cdr lb))))
+                                 (x-to-v (xy)
+                                   (let* ((xmc (/ q (1+ q)))
+                                          (x (- (car xy) xmc))
+                                          (y (cdr xy)))
+                                     (cons (* aomega y) (* -1 aomega x)))))
+                          (append (mklob (mapcar #'x-to-v (get-roche-lobe q 0.0)))
+                                  (mklob (mapcar #'x-to-v (get-roche-lobe q 1.0)))))))))
+
+(defmethod-f make-curve ((p disk-v-plot))
+  (let ((q (qprop p))
+        (aomega (aomega p)))
+    `(path :|stroke| ,(color p)
+           :|stroke-width| "1px"
+           :|vector-effect| "non-scaling-stroke"
+           :|fill| ,(if (fill p) "blue" "none")
+           :|fill-opacity| 0.05
+           :|d| ,(let ((r (* (aomega p) (/ (if (primary p) (sqrt (qprop p)) 1)
+                                           (sqrt 0.6))))
+                       (y (* (aomega p) (/ (if (primary p) (qprop p) -1) (1+ (qprop p)))))
+                       (vmax (* 2.0 (xmax (parent p)))))
+                   (format nil "M 0,~A A ~A ~A 0 1 0 0,~A A ~A ~A 0 1 0 0,~A z M ~A,~A h ~A v ~A h ~A v ~A z"
+                               (+ y r)
+                               r r (- y r)
+                               r r (+ y r)
+                               (- vmax) (- vmax) (* 2 vmax) (* 2 vmax) (- (* 2 vmax)) (- (* 2 vmax)))))))
+
+(defmethod-f make-curve ((p disk-plot))
+  (let ((q (qprop p))
+        (aomega (aomega p)))
+    `(circle :|stroke| ,(color p)
+             :|stroke-width| "1px"
+             :|vector-effect| "non-scaling-stroke"
+             :|fill| ,(if (fill p) "blue" "none")
+             :|fill-opacity| 0.05
+             :|cy| 0
+             :|cx| ,(x0 p)
+             :|r| ,(rd p))))
+
+(defparameter-f *roche-grf* nil)
+
+(defun-f plot-roche (&optional (q 1.0))
+  (if *roche-grf* (remove-element *roche-grf*))
+  (append-element
+    (setf *roche-grf*
+          (create-element "div" :|style.width| "500px"
+                                :|style.height| "500px"
+            :append-element (let ((g (make-instance 'graph :xmin -1 :xmax 2 :ymin -1.5 :ymax 1.5)))
+                              (add-plot g (make-instance 'roche-plot :qprop q))
+                              (render-widget g))))))
+
+(defmethod-f aomega ((s real-profile-source))
+  (* 212.9 (expt (/ (+ (secondary-mass s) (primary-mass s))
+                    (period s))
+                 (/ 1 3))))
+
+(defmethod-f qprop ((s real-profile-source))
+  (/ (secondary-mass s) (primary-mass s)))
+
+(defmethod-f get-controls ((s real-profile-source) node &optional img)
+  (macrolet ((make-label (name &rest code)
+               `(with-self div
+                  (create-element "div"
+                    :append-element
+                      (create-element "label"
+                        :append-element (create-element "span" :|style.marginRight| "1em"
+                                                               :|style.textDecorationStyle| "dashed"
+                                                               :|style.textDecorationLine| "underline"
+                                                               :|style.textDecorationThicknes| "1.75pt"
+                                                               :|style.color| "blue"
+                                                               :|innerHTML| ,name)`
+                        :append-element
+                          (with-self box
+                            (create-element "input" :|type| "checkbox"
+                              :|onclick| (lambda (ev)
+                                           (let ((checked (jscl::oget box "checked")))
+                                             ,@code)
+                                           t)))))))
+             (make-plot-label (name element toggle inst)
+               `(make-label ,name
+                  (,toggle checked)
+                  (if ,element (remove-plot ,element))
+                  (setf ,element nil)
+                  (when checked
+                    (setf ,element ,inst)
+                    (add-plot img ,element))))
+             (toggle-disk (pr el)
+               `(when picker-grf
+                  (if show
+                      (add-plot picker-grf (setf ,el (make-instance 'disk-plot :qprop (qprop s) :aomega (aomega s) :primary ,pr :color "blue")))
+                      (when ,el
+                        (remove-plot ,el)
+                        (setf ,el nil))))))
+    (let ((picker-div nil)
+          (picker-grf nil)
+          (lobes-plot nil)
+          (primary-disk-plot nil)
+          (secondary-disk-plot nil)
+          (primary-disk-v-plot nil)
+          (secondary-disk-v-plot nil)
+          (roche-v-plot nil))
+      (labels ((toggle-lobes (show)
+                 (when picker-grf
+                   (if show
+                       (add-plot picker-grf (setf lobes-plot (make-instance 'roche-plot :qprop (qprop s))))
+                       (when lobes-plot
+                         (remove-plot lobes-plot)
+                         (setf lobes-plot nil)))))
+               (toggle-primary-disk (show)
+                 (toggle-disk t primary-disk-plot))
+               (toggle-secondary-disk (show)
+                 (toggle-disk nil secondary-disk-plot)))
+        (list
+          (make-label "Show picker:"
+            (if picker-div (remove-element picker-div))
+            (setf picker-div nil)
+            (setf picker-grf nil)
+            (when checked
+              ((jscl::oget (parent-element div) "insertBefore")
+               (setf picker-div
+                     (create-element "div" :|style.width| "100%"
+                                           :|style.textAlign| "center"
+                       :append-element
+                         (create-element "span" :|style.width| "80%"
+                                                :|style.display| "inline-block"
+                           :append-element
+                             (prog1
+                               (render-widget
+                                 (setf picker-grf
+                                       (make-instance 'graph :xmin -1 :xmax 2 :ymin -1 :ymax 1 :preserve-aspect-ratio t)))
+                               (let* ((grf (graph picker-grf))
+                                      (igrf (create-element "div" :|style.position| "absolute"
+                                                                  :|style.width| "20px"
+                                                                  :|style.height| "20px"
+                                                                  :|style.transform| "translate(-10px,-10px)"
+                                              :append-element
+                                                (make-svg :|viewBox| "0 0 100 100"
+                                                          :|style.width| "100%"
+                                                          :|style.height| "100%"
+                                                          :|style.left| "0"
+                                                          :|style.top| "0"
+                                                          :|style.display| "block"
+                                                          :|style.position| "absolute"
+                                                          :|preserveAspectRatio| "none"
+                                                  '(g :|stroke| "magenta"
+                                                      :|vector-effect| "non-scaling-stroke"
+                                                      :|fill| "none"
+                                                      (path :|stroke-width| "0.2em" :|d| "M 0,50 h 39 M 50,0 v 39 M 100,50 h -39 M 50,100 v -39")
+                                                      (circle :|stroke-width| "0.2em" :|cx| 50 :|cy| 50 :|r| 30)))))
+                                      (q (qprop s))
+                                      (ao (aomega s))
+                                      (omega (/ (* 2 pi) (period s)))
+                                      (vmax (max-v (params s)))
+                                      (cf (/ 100 ;(jscl::oget (graph img) "clientWidth")
+                                             (* 2 vmax))))
+                                 (append-element igrf (graph img))
+                                 (setf (jscl::oget grf "onmousemove")
+                                       (lambda (ev)
+                                         (oget-bind (x y) ev ("layerX" "layerY")
+                                           (oget-bind (wi he) grf ("clientWidth" "clientHeight")
+                                             (destructuring-bind (x y) (mapcar (lambda (x w mi ma)
+                                                                                 (+ mi (* (- ma mi) (/ x w))))
+                                                                               (list x (- he y))
+                                                                               (list wi he)
+                                                                               (list (xmin picker-grf) (ymin picker-grf))
+                                                                               (list (xmax picker-grf) (ymax picker-grf)))
+                                               (let ((i-vx 0)
+                                                     (i-vy 0))
+                                                 (map nil
+                                                      (lambda (p vp)
+                                                        (if p
+                                                            (let* ((r (sqrt (+ (sqr (- x (x0 p))) (sqr y))))
+                                                                   (in (< r (rd p))))
+                                                              (when (or (and in (not (fill p)))
+                                                                        (and (not in) (fill p)))
+                                                                (setf (slot-value vp 'fill) (setf (slot-value p 'fill) (not (fill p))))
+                                                                (remove-plot p)
+                                                                (remove-plot vp)
+                                                                (add-plot picker-grf p)
+                                                                (add-plot img vp))
+                                                              (when in
+                                                                (let ((vk (* ao (sqrt (/ (if (primary p) 1 q)
+                                                                                       (* r (1+ q)))))))
+
+                                                                  (setf i-vx (/ (- (* vk y)) r))
+                                                                  (setf i-vy (/ (* vk (- x (x0 p))) r))
+                                                                  (setf x (x0 p))
+                                                                  (setf y 0))))))
+                                                      (list primary-disk-plot secondary-disk-plot)
+                                                      (list primary-disk-v-plot secondary-disk-v-plot))
+                                                 (let* ((x (- x (/ q (1+ q))))
+                                                        (vx (+ (* ao y) i-vx))
+                                                        (vy (+ (* ao x) i-vy)))
+                                                   (setf (jscl::oget igrf "style" "left") (format nil "~A%" (* cf (+ vx vmax))))
+                                                   (setf (jscl::oget igrf "style" "top") (format nil "~A%" (* cf (- vmax vy))))))))))))))))
+               div)))
+          (make-plot-label "Show Roche lobes:" roche-v-plot toggle-lobes (make-instance 'roche-v-plot :qprop (qprop s) :aomega (aomega s)))
+          (make-plot-label "Show primary disk:" primary-disk-v-plot toggle-primary-disk (make-instance 'disk-v-plot :qprop (qprop s) :aomega (aomega s) :primary t :color "blue"))
+          (make-plot-label "Show secondary disk:" secondary-disk-v-plot toggle-secondary-disk (make-instance 'disk-v-plot :qprop (qprop s) :aomega (aomega s) :primary nil :color "blue")))))))

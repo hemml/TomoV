@@ -22,6 +22,12 @@
 (defclass-f solver-widget (omg-widget watcher)
   ((solver :accessor solver)))
 
+(defclass-f zoomed-images (modal-dialog-window)
+  ((img :initarg :img
+        :accessor img)
+   (ctrls :initarg :ctrls
+          :accessor ctrls)))
+
 (lazy-slot fit-abs ((s art-solver))
   nil)
 
@@ -362,6 +368,39 @@
                                                      "")))
                                              "")))))))
 
+(defmethod-f render-widget :after ((z zoomed-images))
+  (let* ((img (root (img z)))
+         (ctrls (ctrls z))
+         (img-parent (parent-element img))
+         (img-prev (jscl::oget img "nextSibling"))
+         (ctrls-parent (parent-element ctrls))
+         (ctrls-prev (jscl::oget ctrls "nextSibling")))
+    (append-element
+      (create-element "div" :|style.width| (* 0.8 (page-width))
+                            :|style.background| "white"
+                            :|style.border| "1px solid black"
+                            :|style.borderRadius| "0.5em"
+                            :|style.padding| "1em"
+        :append-element (create-element "button" :|innerHTML| "close"
+                                                 :|style.position| "absolute"
+                                                 :|style.top| "0.5em"
+                                                 :|style.right| "0.5em"
+                          :|onclick| (lambda (ev)
+                                       ((jscl::oget img-parent "insertBefore") img img-prev)
+                                       ((jscl::oget ctrls-parent "insertBefore") ctrls ctrls-prev)
+                                       (close z)))
+        :append-element
+          (create-element "table" :|style.width| "100%"
+            :append-element
+              (create-element "tr"
+                :append-element
+                  (create-element "td" :|style.width| "39%"
+                    :append-element img)
+                :append-element
+                  (create-element "td"
+                    :append-element ctrls))))
+      (root z))))
+
 (defmethod-f render-widget ((s solver-widget))
   (setf (slot-value s 'root)
         (labels ((get-adsp-data ()
@@ -391,6 +430,8 @@
                                             :scales '(:left :right :top :bottom)
                                             :preserve-aspect-ratio t
                                             :xcaption "V (km/s)" :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")))
+                 (ctrls (create-element "div" :|style.marginTop| "0.5em"
+                          :append-elements (get-controls (source (solver s)) (graph img) img)))
                  (plt (make-instance 'matrix-plot :matrix (matrix (solver s)) :norm t
                                                   :xmin (xmin img) :xmax (xmax img)
                                                   :ymin (ymin img) :ymax (ymax img)))
@@ -422,6 +463,13 @@
                                       :|style.textAlign| "center"
                                       :|style.float| "left"
                   :append-element (render-widget img)
+                  :append-element (create-element "div" :|style.marginTop| "1em"
+                                    :append-element (create-element "button" :|innerHTML| "zoom"
+                                                      :|onclick| (lambda (ev)
+                                                                   (append-element
+                                                                     (render-widget
+                                                                       (make-instance 'zoomed-images :img img :ctrls ctrls))))))
+                  :append-element ctrls
                   :append-element
                     (create-element "div" :|style.marginTop| "1em"
                       :append-element (create-element "a" :|href| "#"
@@ -474,9 +522,6 @@
                                           :|style.marginTop| "1em"
                       :append-element (render-widget pgb))
                   :append-element (render-widget inf)
-                  :append-element
-                    (create-element "div" :|style.marginTop| "0.5em"
-                      :append-elements (get-controls (source (solver s)) (graph img)))
                   :append-elements
                     (labels ((make-check (name slot)
                                (create-element "div"

@@ -285,7 +285,7 @@
   (if (and (slot-boundp p 'cur-plot) (cur-plot p)) (remove-plot (cur-plot p)))
   (reset s))
 
-(defmethod-f get-controls ((s profile-source) node)
+(defmethod-f get-controls ((s profile-source) node &optional img)
   nil)
 
 (lazy-slot solver ((s profile-source-widget))

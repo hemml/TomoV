@@ -261,7 +261,7 @@
              :|y| ,(* 500 (- 1 (/ (- ny mh) (* 2 ny))))
              ,(sample-char s)))))
 
-(defmethod-f get-controls ((s sample-profile-source) node)
+(defmethod-f get-controls ((s sample-profile-source) node &optional img)
   (list
     (create-element "label"
       :append-element (create-element "span" :|style.marginRight| "1em"
