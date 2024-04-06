@@ -555,8 +555,7 @@
            :|vector-effect| "non-scaling-stroke"
            :|fill| ,(if (fill p) "blue" "none")
            :|fill-opacity| 0.05
-           :|d| ,(let ((r (* (aomega p) (/ (if (primary p) (sqrt (qprop p)) 1)
-                                           (sqrt 0.6))))
+           :|d| ,(let ((r (* (aomega p) (/ 1 (sqrt 0.6))))
                        (y (* (aomega p) (/ (if (primary p) (qprop p) -1) (1+ (qprop p)))))
                        (vmax (* 2.0 (xmax (parent p)))))
                    (format nil "M 0,~A A ~A ~A 0 1 0 0,~A A ~A ~A 0 1 0 0,~A z M ~A,~A h ~A v ~A h ~A v ~A z"
@@ -720,7 +719,7 @@
                                                                 (add-plot img vp))
                                                               (when in
                                                                 (let ((vk (* ao (sqrt (/ (if (primary p) 1 q)
-                                                                                       (* r (1+ q)))))))
+                                                                                         (* r (1+ q)))))))
 
                                                                   (setf i-vx (/ (- (* vk y)) r))
                                                                   (setf i-vy (/ (* vk (- x (x0 p))) r))
