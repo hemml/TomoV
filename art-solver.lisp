@@ -431,7 +431,7 @@
                                             :preserve-aspect-ratio t
                                             :xcaption "V (km/s)" :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")))
                  (ctrls (create-element "div" :|style.marginTop| "0.5em"
-                          :append-elements (get-controls (source (solver s)) (graph img) img)))
+                          :append-elements (get-controls (source (solver s)) (graph img) img (matrix (solver s)))))
                  (plt (make-instance 'matrix-plot :matrix (matrix (solver s)) :norm t
                                                   :xmin (xmin img) :xmax (xmax img)
                                                   :ymin (ymin img) :ymax (ymax img)))
