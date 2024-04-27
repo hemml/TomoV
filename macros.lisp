@@ -1,6 +1,12 @@
 (in-package :tomo)
 
-(def-local-macro-f sqr (x) `(* ,x ,x))
+(def-local-macro-f sqr (x)
+  (let ((xs (gensym)))
+    `(let ((,xs ,x))
+       (* ,xs ,xs))))
+
+(def-local-macro-f xor (x y)
+  `(not (eql (if ,x t nil) (if ,y  t nil))))
 
 (defmacro lazy-slot (slot args &rest body)
   (let ((obj (caar args)))
