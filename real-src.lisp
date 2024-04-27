@@ -494,16 +494,16 @@
           (loop for j below v-map-res do
             (let* ((idx (+ i (* v-map-res j)))
                    (x (i2x i xmin xmax))
-                   (y (i2x j ymax ymin)))
-;;              (when (inside mo x y)
-                (let* ((v (funcall x2v (cons x y)))
-                       (vi (v2i (car v)))
+                   (y (i2x j ymax ymin))
+                   (v (funcall x2v (cons x y))))
+              (when v
+                (let* ((vi (v2i (car v)))
                        (vj (- resolution 1 (v2i (cdr v)))))
                   (when (and (>= vi 0) (< vi resolution)
                              (>= vj 0) (< vj resolution))
                     (let ((v-idx (+ vi (* resolution vj))))
                       (setf (aref arr v-idx)
-                            (cons idx (aref arr v-idx)))))))))))
+                            (cons idx (aref arr v-idx))))))))))))
     arr))
 
 (lazy-slot v-cnv ((mo mappable-object))
@@ -561,8 +561,8 @@
                            ((jscl::oget ctx "putImageData") idat 0 0)
                            ((jscl::oget xy-ctx "putImageData") xy-idat 0 0)
                            (redraw (xy-plot mo))))))))))
-      (create-element "canvas" :|width|  (resolution (params (source mo)))
-                               :|height| (resolution (params (source mo)))
+      (create-element "canvas" :|width|  resolution
+                               :|height| resolution
                                :|style.width| "100%"
                                :|style.height| "100%"
                                :|style.left| "0"
