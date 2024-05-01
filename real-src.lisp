@@ -971,7 +971,7 @@
                                                                 :|style.position| "absolute"
                                                                 :|style.top| "0.25em"
                                                                 :|style.right| "0.5em"
-                                                                :|style.zIndex| 20
+                                                                :|style.zIndex| 200
                                           :|onclick| (lambda (ev)
                                                        (let* ((xy-cnv (xy-cnv mapping-mo))
                                                               (xy-ctx ((jscl::oget xy-cnv "getContext") "2d"))
