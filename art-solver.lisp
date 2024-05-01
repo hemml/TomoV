@@ -369,37 +369,43 @@
                                              "")))))))
 
 (defmethod-f render-widget :after ((z zoomed-images))
-  (let* ((img (root (img z)))
-         (ctrls (ctrls z))
-         (img-parent (parent-element img))
-         (img-prev (jscl::oget img "nextSibling"))
-         (ctrls-parent (parent-element ctrls))
-         (ctrls-prev (jscl::oget ctrls "nextSibling")))
+  (let* ((ctrls (cons (root (img z)) (ctrls z)))
+         (parents (mapcar #'parent-element ctrls))
+         (prevs (mapcar (lambda (ctrl) (jscl::oget ctrl "nextSibling")) ctrls)))
     (append-element
       (create-element "div" :|style.width| (* 0.8 (page-width))
+                            :|style.maxHeight| (* 0.9 (page-height))
                             :|style.background| "white"
                             :|style.border| "1px solid black"
                             :|style.borderRadius| "0.5em"
                             :|style.padding| "1em"
+                            :|style.display| "flex"
+                            :|style.flexFlow| "column wrap"
+        :append-elements
+          (loop for (e1 e2) on ctrls by #'cddr collect
+            (create-element "div" :|style.width| "100%"
+                                  :|style.display| "flex"
+                                  :|style.flexFlow| "row wrap"
+               :append-element (create-element "div" :|style.display| "inline-block"
+                                                     :|style.flex| 1
+                                  :append-element e1)
+               :append-elements (if e2 (list (create-element "div" :|style.display| "inline-block"
+                                                                   :|style.flex| 1
+                                               :append-element e2)))))
         :append-element (create-element "button" :|innerHTML| "close"
                                                  :|style.position| "absolute"
                                                  :|style.top| "0.5em"
                                                  :|style.right| "0.5em"
                           :|onclick| (lambda (ev)
-                                       ((jscl::oget img-parent "insertBefore") img img-prev)
-                                       ((jscl::oget ctrls-parent "insertBefore") ctrls ctrls-prev)
-                                       (close z)))
-        :append-element
-          (create-element "table" :|style.width| "100%"
-            :append-element
-              (create-element "tr"
-                :append-element
-                  (create-element "td" :|style.width| "39%"
-                    :append-element img)
-                :append-element
-                  (create-element "td"
-                    :append-element ctrls))))
+                                       (map nil (lambda (el parent prev)
+                                                  ((jscl::oget parent "insertBefore") el prev))
+                                                (reverse ctrls)
+                                                (reverse parents)
+                                                (reverse prevs))
+                                       (close z))))
       (root z))))
+
+
 
 (defmethod-f render-widget ((s solver-widget))
   (setf (slot-value s 'root)
@@ -430,8 +436,7 @@
                                             :scales '(:left :right :top :bottom)
                                             :preserve-aspect-ratio t
                                             :xcaption "V (km/s)" :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")))
-                 (ctrls (create-element "div" :|style.marginTop| "0.5em"
-                          :append-elements (get-controls (source (solver s)) (graph img) img (matrix (solver s)))))
+                 (ctrls (get-controls (source (solver s)) (graph img) img (matrix (solver s))))
                  (plt (make-instance 'matrix-plot :matrix (matrix (solver s)) :norm t
                                                   :xmin (xmin img) :xmax (xmax img)
                                                   :ymin (ymin img) :ymax (ymax img)))
@@ -469,7 +474,8 @@
                                                                    (append-element
                                                                      (render-widget
                                                                        (make-instance 'zoomed-images :img img :ctrls ctrls))))))
-                  :append-element ctrls
+                  :append-element (create-element "div" :|style.marginTop| "0.5em"
+                                    :append-elements ctrls)
                   :append-element
                     (create-element "div" :|style.marginTop| "1em"
                       :append-element (create-element "a" :|href| "#"

@@ -464,22 +464,35 @@
               :initarg :v-map-res)
    (xy-plot :accessor xy-plot)
    (v-plot :accessor v-plot)
+   (mmax :accessor mmax
+         :initform nil)
    (xy-cnv)
    (v-cnv)
    (v-map)
    (name :accessor name)
    (active :accessor active
            :initform nil)
+   (selected :accessor selected
+             :initform nil)
    (highlited :accessor highlited
               :initform nil)
    (contour)
-   (bounds)))
+   (bounds)
+   (zindex :initform 0
+           :accessor zindex
+           :initarg :zindex)))
 
 (defclass-f mappable-plot (plot)
   ((source :initarg :source
            :accessor source)
    (space :initarg :space
           :accessor space)))
+
+(defmethod-f render-widget ((p mappable-plot))
+  (let ((root (call-next-method)))
+    (when (equal (space p) :xy)
+      (setf (jscl::oget root "style" "zIndex") (zindex (source p))))
+    root))
 
 (lazy-slot v-map ((mo mappable-object))
   (let* ((resolution (resolution (params (source mo))))
@@ -506,60 +519,75 @@
                             (cons idx (aref arr v-idx))))))))))))
     arr))
 
-(lazy-slot v-cnv ((mo mappable-object))
-  (let* ((mmax nil)
-         (last-mmax nil)
+(defmethod-f map-intensity ((mo mappable-object) &optional indexes)
+  (let* ((xy-cnv (xy-cnv mo))
+         (xy-ctx ((jscl::oget xy-cnv "getContext") "2d"))
          (vmres (v-map-res mo))
+         (xy-idat ((jscl::oget xy-ctx "getImageData") 0 0 vmres vmres))
+         (xy-dat (jscl::oget xy-idat "data"))
+         (matrix (matrix mo))
          (vmap (v-map mo))
          (resolution (resolution (params (source mo)))))
+    (destructuring-bind (&optional mmax last-mmax) (mmax mo)
+      (let* ((mmax (if (and mmax last-mmax (< (- (now) last-mmax) 1))
+                       mmax
+                       (let ((mmax (apply #'max (loop for i below (sqr resolution) collect (aref matrix i)))))
+                         (car (setf (slot-value mo 'mmax) (list mmax (now))))))))
+        (labels ((mp (idx)
+                  (let ((pts (aref vmap idx)))
+                    (when pts
+                      (let ((ii (/ (aref matrix idx) (* mmax)))) ; (length pts)))))
+                        (map nil (lambda (idx2)
+                                    (let* ((oi (aref xy-dat (+ 0 (* 4 idx2))))
+                                           (oi (if (> oi 0) oi 255)))
+                                       (setf (aref xy-dat (+ 0 (* 4 idx2)))
+                                             (setf (aref xy-dat (+ 1 (* 4 idx2)))
+                                                   (setf (aref xy-dat (+ 2 (* 4 idx2)))
+                                                         (min oi (* 255 (- 1 ii))))))
+                                       (setf (aref xy-dat (+ 3 (* 4 idx2))) 255)))
+                                 pts))))))
+          (if indexes
+              (map nil #'mp indexes)
+              (let* ((v-cnv (v-cnv mo))
+                     (v-ctx ((jscl::oget v-cnv "getContext") "2d"))
+                     (v-idat ((jscl::oget v-ctx "getImageData") 0 0 resolution resolution))
+                     (v-dat (jscl::oget v-idat "data")))
+                (loop for i below (sqr resolution)
+                  when (> (aref v-dat (+ 3 (* i 4))) 0) do (mp i)))))
+        ((jscl::oget xy-ctx "putImageData") xy-idat 0 0)))))
+
+
+(lazy-slot v-cnv ((mo mappable-object))
+  (let ((resolution (resolution (params (source mo)))))
     (labels ((make-ev (btn)
                (lambda (ev)
                  (when (and (or (not btn) (> (jscl::oget ev "buttons") 0)))
-                   (let* ((matrix (matrix mo))
-                          (xy-cnv (xy-cnv mo))
-                          (xy-ctx ((jscl::oget xy-cnv "getContext") "2d"))
-                          (xy-idat ((jscl::oget xy-ctx "getImageData") 0 0 vmres vmres))
-                          (xy-dat (jscl::oget xy-idat "data"))
-                          (cnv (jscl::oget ev "target"))
+                   (let* ((cnv (jscl::oget ev "target"))
                           (ctx ((jscl::oget cnv "getContext") "2d"))
                           (idat ((jscl::oget ctx "getImageData") 0 0 resolution resolution))
-                          (dat (jscl::oget idat "data"))
-                          (mmax (if (and mmax last-mmax (< (- (now) last-mmax) 1))
-                                    mmax
-                                    (progn
-                                      (setf last-mmax (now))
-                                      (setf mmax (apply #'max (loop for i below (sqr resolution) collect (aref matrix i))))))))
+                          (dat (jscl::oget idat "data")))
                      (oget-bind (x y) ev ("layerX" "layerY")
                        (oget-bind (wi he) cnv ("clientWidth" "clientHeight")
                          (let* ((i0 (floor (* resolution x) wi))
                                 (j0 (floor (* resolution y) he))
-                                (delta (max 1 (floor resolution 50))))
-                           (loop for i from (- i0 delta) below (+ 1 i0 delta) append
-                             (remove-if #'null
-                               (loop for j from (- j0 delta) below (+ 1 j0 delta) collect
-                                 (when (and (>= i 0)
-                                            (>= j 0)
-                                            (< i resolution)
-                                            (< j resolution)
-                                            (<= (+ (sqr (- i0 i)) (sqr (- j0 j)))
-                                                (sqr delta)))
-                                   (let* ((idx (+ i (* resolution j)))
-                                          (idx4 (* 4 idx)))
-                                     (when (= 0 (aref dat (+ idx4 3)))
-                                       (setf (aref dat (+ idx4 2)) 255)
-                                       (setf (aref dat (+ idx4 3)) 100)
-                                       (let ((ii (/ (aref matrix idx) mmax)))
-                                         (map nil (lambda (idx2)
-                                                     (let* ((oi (aref xy-dat (+ 0 (* 4 idx2))))
-                                                            (oi (if (> oi 0) oi 255)))
-                                                        (setf (aref xy-dat (+ 0 (* 4 idx2)))
-                                                              (setf (aref xy-dat (+ 1 (* 4 idx2)))
-                                                                    (setf (aref xy-dat (+ 2 (* 4 idx2)))
-                                                                          (min oi (* 255 (- 1 ii))))))
-                                                        (setf (aref xy-dat (+ 3 (* 4 idx2))) 255)))
-                                                  (aref vmap idx)))))))))
+                                (delta (max 1 (floor resolution 50)))
+                                (indexes (loop for i from (- i0 delta) below (+ 1 i0 delta) append
+                                           (remove-if #'null
+                                             (loop for j from (- j0 delta) below (+ 1 j0 delta) collect
+                                               (when (and (>= i 0)
+                                                          (>= j 0)
+                                                          (< i resolution)
+                                                          (< j resolution)
+                                                          (<= (+ (sqr (- i0 i)) (sqr (- j0 j)))
+                                                              (sqr delta)))
+                                                 (let* ((idx (+ i (* resolution j)))
+                                                        (idx4 (* 4 idx)))
+                                                   (when (= 0 (aref dat (+ idx4 3)))
+                                                     (setf (aref dat (+ idx4 2)) 255)
+                                                     (setf (aref dat (+ idx4 3)) 100)
+                                                     idx))))))))
+                           (if indexes (map-intensity mo indexes))
                            ((jscl::oget ctx "putImageData") idat 0 0)
-                           ((jscl::oget xy-ctx "putImageData") xy-idat 0 0)
                            (redraw (xy-plot mo))))))))))
       (create-element "canvas" :|width|  resolution
                                :|height| resolution
@@ -577,24 +605,30 @@
                            :|height| (v-map-res mo)))
 
 (defmethod-f make-curve ((p mappable-plot))
-  (destructuring-bind (xmin xmax ymin ymax) (bounds (source p))
-    (let ((path (funcall (if (equal :xy (space p)) #'get-xy-path #'get-v-path) (source p))))
-      `(g ,@(if (equal :xy (space p))
-                `((defs (:|clipPath| :|id| "clip"
-                           (path :|fill| "none"
-                                 ,@path)))
-                  (image :|clip-path| "url(#clip)"
-                         :|width| ,(- xmax xmin)
-                         :|height| ,(- ymax ymin)
-                         :|preserveAspectRatio| "none"
-                         :|x| ,xmin
-                         :|y| ,ymin
-                         :|href| ,((jscl::oget (xy-cnv (source p)) "toDataURL") "image/png"))))
-          (path :|stroke| ,(color p)
-                :|stroke-width| "1px"
-                :|vector-effect| "non-scaling-stroke"
-                :|fill| ,(if (highlited (source p)) "rgba(0,0,255,0.05)" "none")
-                ,@path)))))
+  (let ((yofs (+ (ymax (parent p)) (ymin (parent p))))
+        (clip-name (omgui::random-id)))
+    (destructuring-bind (xmin xmax ymin ymax) (bounds (source p))
+      (let ((path (funcall (if (equal :xy (space p)) #'get-xy-path #'get-v-path)
+                           (source p)
+                           :yofs yofs)))
+        `(g ,@(if (equal :xy (space p))
+                  `((defs (:|clipPath| :|id| ,clip-name
+                             (path :|fill| "none"
+                                   ,@path)))
+                    (image :|clip-path| ,(format nil "url(#~A)" clip-name)
+                           :|width| ,(- xmax xmin)
+                           :|height| ,(- ymax ymin)
+                           :|preserveAspectRatio| "none"
+                           :|x| ,xmin
+                           :|y| ,(- yofs ymax)
+                           :|href| ,((jscl::oget (xy-cnv (source p)) "toDataURL") "image/png")
+                           :|style.zIndex| ,(1- (zindex (source p))))))
+            (path :|stroke| ,(color p)
+                  :|stroke-width| "1px"
+                  :|vector-effect| "non-scaling-stroke"
+                  :|fill| ,(if (highlited (source p)) "rgba(0,0,255,0.05)" "none")
+                  :|style.zIndex| ,(zindex (source p))
+                  ,@path))))))
 
 (lazy-slot bounds ((p mappable-object))
   (let ((contour (contour p)))
@@ -628,20 +662,24 @@
                          1
                          0))))))))
 
-(defmethod-f get-path ((mo mappable-object) &key space)
+(defmethod-f get-path ((mo mappable-object) &key space yofs)
   (let ((lb (mapcar (if (equal space :xy) #'identity (xy-to-v mo)) (contour mo))))
     (apply #'jscl::concat
-      `(,(format nil "M ~A,~A " (caar lb) (- (cdar lb)))
-        ,@(mapcar (lambda (p) (format nil "L~A,~A " (car p) (- (cdr p)))) (cdr lb))
+      `(,(format nil "M ~A,~A " (caar lb) (- yofs (cdar lb)))
+        ,@(mapcar (lambda (p) (format nil "L~A,~A " (car p) (- yofs (cdr p)))) (cdr lb))
         "Z"))))
 
-(defmethod-f get-xy-path ((mo mappable-object))
-  `(:|d| ,(get-path mo :space :xy)))
+(defmethod-f get-xy-path ((mo mappable-object) &key yofs)
+  `(:|d| ,(get-path mo :space :xy :yofs yofs)))
 
-(defmethod-f get-v-path ((mo mappable-object))
-  `(:|d| ,(get-path mo :space :v)))
+(defmethod-f get-v-path ((mo mappable-object) &key yofs)
+  `(:|d| ,(get-path mo :space :v :yofs yofs)))
 
 (defmethod-f xy-to-v ((mo mappable-object))
+  nil)
+
+
+(defmethod-f setup-elements ((mo mappable-object))
   nil)
 
 (defclass-f roche-lobe (mappable-object)
@@ -674,6 +712,8 @@
   ((x0 :accessor x0)
    (ecc :accessor ecc
         :initform 0)
+   (angle :accessor angle
+          :initform 0)
    (qprop)
    (rd)))
 
@@ -687,16 +727,20 @@
   (let* ((rd (rd d))
          (x0 (x0 d))
          (np 100)
+         (ecc (ecc d))
+         (ang (* pi -1 (1+ (/ (angle d) -180))))
+         (p (* rd (- 1 (sqr ecc))))
          (cont (loop for i below np collect
-                 (let ((phi (* 2 pi (/ i np))))
-                   (cons (+ x0 (* rd (jscos phi)))
-                         (* rd (jssin phi)))))))
+                 (let* ((phi (+ (* 2 pi (/ i np))))
+                        (r (/ p (1+ (* ecc (jscos (+ ang phi)))))))
+                   (cons (+ x0 (* r (jscos phi)))
+                         (* r (jssin phi)))))))
     `(,@cont ,(car cont))))
 
-(defmethod-f get-v-path ((d accretion-disk))
+(defmethod-f get-v-path ((d accretion-disk) &key yofs)
   (let ((vmax (* 2 (max-v (params (source d))))))
     `(:|d| ,(format nil "~A M ~A,~A h ~A v ~A h ~A z"
-               (get-path d :space :v)
+               (get-path d :space :v :yofs yofs)
                (- vmax) (- vmax)
                (* 2 vmax)
                (* 2 vmax)
@@ -709,23 +753,97 @@
          (aomega (aomega src))
          (x0 (x0 d))
          (rd (rd d))
+         (ang (angle d))
+         (ang (* -1 pi (1+ (/ ang -180))))
+         (ecc (ecc d))
          (xmc (/ qprop-src (1+ qprop-src))))
     (lambda (xy)
-      (let* ((x (car xy))
+      (let* ((x (- (car xy) x0))
              (y (cdr xy))
-             (r (sqrt (+ (sqr (- x x0)) (sqr y)))))
-        (when (<= r (* 1.01 rd))
-          (let ((vk (* aomega
-                       (sqrt (/ (sqrt (* qprop-src qprop-dsk))
-                                (* r (1+ qprop-src)))))))
-            (cons (/ (- (* vk y)) r)
-                  (+ (* aomega x0) (/ (* vk (- x x0)) r)))))))))
+             (r (sqrt (+ (sqr x) (sqr y))))
+             (phi (+ ang (jsatan2 y x)))
+             (a (/ (* r (1+ (* ecc (jscos phi))))
+                   (- 1 (sqr ecc))))
+             (fpa (jsatan2 (* ecc (jssin phi)) (1+ (* ecc (jscos phi)))))
+             (fa (- (+ phi (* 0.5 pi)) fpa ang)))
+        (let ((vk (* aomega
+                     (sqrt (* (/ (sqrt (* qprop-src qprop-dsk))
+                                 (1+ qprop-src))
+                              (- (/ 2 r) (/ 1 a)))))))
+          (cons (* vk (jscos fa))
+                (+ (* aomega x0) (* vk (jssin fa)))))))))
+
+(defun get-fpa (phi e)
+  (let ((phi (* phi 2 pi)))
+    (acos (/ (1+ (* e (cos phi)))
+             (sqrt (+ 1 (* e e) (* 2 e (cos phi))))))))
+
 
 (defmethod-f inside ((d accretion-disk) x y) ;; Speedup the check a bit for circular disks
   (if (= (ecc d) 0)
       (<= (sqrt (+ (sqr (- x (x0 d))) (sqr y)))
           (rd d))
       (call-next-method)))
+
+(defmethod-f setup-elements ((d accretion-disk))
+  (labels ((update-all ()
+             (slot-makunbound d 'contour)
+             (slot-makunbound d 'bounds)
+             (slot-makunbound d 'xy-cnv)
+             (slot-makunbound d 'v-map)
+             (map-intensity d)
+             (ignore-errors (redraw (xy-plot d)))
+             ; (when (selected d)
+             ;   (multiple-value-bind (xmin xmax ymin ymax) (bounds d)
+             ;     (rescale (parent (xy-plot d)) :xmin xmin :xmax xmax :ymin ymin :ymax ymax)))
+             (ignore-errors (redraw (v-plot d)))))
+    (list (create-element "table"
+            :append-element
+              (create-element "tr"
+                :append-element (create-element "td" :|innerHTML| "Major semi-axis (Rsun):")
+                :append-element
+                  (create-element "td"
+                    :append-element
+                      (macrolet ((cf ()
+                                   '(* 4.217
+                                       (expt (* (sqr (period (source d)))
+                                                (+ (primary-mass (source d))
+                                                   (secondary-mass (source d))))
+                                             (/ 1 3)))))
+                        (render-widget (make-instance 'editable-field
+                                         :value (format nil "~A" (* (rd d) (cf)))
+                                         :ok (lambda (val)
+                                               (let ((v (js-parse-float val)))
+                                                 (when (and v (not (is-nan v)) (> v 0))
+                                                   (setf (slot-value d 'rd) (/ v (cf)))
+                                                   (update-all)
+                                                   v))))))))
+            :append-element
+              (create-element "tr"
+                :append-element (create-element "td" :|innerHTML| "Eccentricity:")
+                :append-element
+                  (create-element "td"
+                    :append-element (render-widget (make-instance 'editable-field
+                                                     :value (ecc d)
+                                                     :ok (lambda (val)
+                                                           (let ((v (js-parse-float val)))
+                                                             (when (and v (not (is-nan v)) (>= v 0) (< v 1))
+                                                               (setf (slot-value d 'ecc) v)
+                                                               (update-all)
+                                                               v)))))))
+            :append-element
+              (create-element "tr"
+                :append-element (create-element "td" :|innerHTML| "Position angle (deg):")
+                :append-element
+                  (create-element "td"
+                    :append-element (render-widget (make-instance 'editable-field
+                                                     :value (angle d)
+                                                     :ok (lambda (val)
+                                                           (let ((v (js-parse-float val)))
+                                                             (when (and v (not (is-nan v)))
+                                                               (setf (slot-value d 'angle) v)
+                                                               (update-all)
+                                                               v)))))))))))
 
 (defclass-f primary-disk (accretion-disk)
   ((x0 :initform 0)
@@ -747,24 +865,32 @@
   (/ (secondary-mass s) (primary-mass s)))
 
 (defmethod-f get-controls ((s real-profile-source) node &optional img matrix)
-  (macrolet ((make-label (name &rest code)
-               `(with-self div
-                  (create-element "div"
-                    :append-element
-                      (create-element "label"
-                        :append-element (create-element "span" :|style.marginRight| "1em"
-                                                               :|style.textDecorationStyle| "dashed"
-                                                               :|style.textDecorationLine| "underline"
-                                                               :|style.textDecorationThicknes| "1.75pt"
-                                                               :|style.color| "blue"
-                                                               :|innerHTML| ,name)
+  (macrolet ((make-label (name add &rest code)
+               (let ((app-block (gensym)))
+                 `(let ((,app-block (create-element "div" :|style.display| "none"
+                                                          :|style.marginLeft| "2em"
+                                     :append-elements ,add)))
+                    (with-self div
+                      (create-element "div" :|style.width| "100%"
                         :append-element
-                          (with-self box
-                            (create-element "input" :|type| "checkbox"
-                              :|onclick| (lambda (ev)
-                                           (let ((checked (jscl::oget box "checked")))
-                                             ,@code)
-                                           t)))))))
+                          (create-element "div"
+                            :append-element
+                              (create-element "label"
+                                :append-element (create-element "span" :|style.marginRight| "1em"
+                                                                       :|style.textDecorationStyle| "dashed"
+                                                                       :|style.textDecorationLine| "underline"
+                                                                       :|style.textDecorationThicknes| "1.75pt"
+                                                                       :|style.color| "blue"
+                                                                       :|innerHTML| ,name)
+                                :append-element
+                                  (with-self box
+                                    (create-element "input" :|type| "checkbox"
+                                      :|onclick| (lambda (ev)
+                                                   (let ((checked (jscl::oget box "checked")))
+                                                     (setf (jscl::oget ,app-block "style" "display") (if checked "block" "none"))
+                                                     ,@code)
+                                                   t)))))
+                        :append-elements (if ,add (list ,app-block)))))))
              (with-xy (ev &rest code)
                (let ((xmin (gensym))
                      (xmax (gensym))
@@ -787,9 +913,10 @@
                                      (< y ,ymax))
                             ,@code))))))))
     (let* ((picker-grf (make-instance 'graph :xmin -1 :xmax 2 :ymin -1 :ymax 1 :preserve-aspect-ratio t))
-           (picker-div (create-element "div" :|style.width| "100%"
-                                             :|style.textAlign| "center"
+           (picker-div (create-element "div" :|style.textAlign| "center"
                                              :|style.display| "none"
+                                             :|style.width| "100%"
+                                             :|style.marginTop| "2em"
                          :append-element
                            (create-element "span" :|style.width| "80%"
                                                   :|style.display| "inline-block"
@@ -805,6 +932,7 @@
                                        :|style.transform| "translate(-10px,-10px)"
                                        :|style.visibility| "hidden"
                                        :|style.z-index| 5
+                                       ; :|style.filter| "drop-shadow(-0.5px -0.5px 1px white) drop-shadow(0.5px 0.5px 1px white) drop-shadow(-0.5px 0.5px 1px white) drop-shadow(0.5px -0.5px 1px white);"
                    :append-element
                      (make-svg :|viewBox| "0 0 100 100"
                                :|style.width| "100%"
@@ -819,11 +947,14 @@
                            :|fill| "none"
                            (path :|stroke-width| "0.2em" :|d| "M 0,50 h 39 M 50,0 v 39 M 100,50 h -39 M 50,100 v -39")
                            (circle :|stroke-width| "0.2em" :|cx| 50 :|cy| 50 :|r| 30)))))
-           (mappable-objects (mapcar (lambda (cls) (make-instance cls :source s :matrix matrix))
-                                     '(primary-roche-lobe
-                                       secondary-roche-lobe
-                                       primary-disk
-                                       secondary-disk)))
+           (mappable-classes '(primary-roche-lobe
+                               secondary-roche-lobe
+                               primary-disk
+                               secondary-disk))
+           (mappable-objects (mapcar (lambda (cls z) (make-instance cls :source s :matrix matrix :zindex z))
+                                     mappable-classes
+                                     (loop for i below (length mappable-classes) collect (+ 5 (* i 5)))))
+
            (vmax (max-v (params s)))
            (cf (/ 100 (* 2 vmax))) ;; 100 is a 100%
            (igrf-on nil)
@@ -867,10 +998,12 @@
                                    (destructuring-bind (xmin xmax ymin ymax) last-bnd
                                      (rescale picker-grf :xmin xmin :xmax xmax :ymin ymin :ymax ymax))
                                    (remove-element (v-cnv mapping-mo))
+                                   (setf (slot-value mapping-mo 'selected) nil)
                                    (setf mapping-mo nil)
                                    (set-picker-decoration)))
                                (when cur-mo
                                  (setf mapping-mo cur-mo)
+                                 (setf (slot-value mapping-mo 'selected) t)
                                  (append-element (v-cnv mapping-mo) (graph img))
                                  (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click outside to unzoom)" (name mapping-mo)))
                                  (setf last-bnd (loop for i in `(,#'xmin ,#'xmax ,#'ymin ,#'ymax) collect (funcall i picker-grf)))
@@ -885,11 +1018,15 @@
                              (loop for mo in mappable-objects do
                                (when (not (equal (equal mo cur-mo) (highlited mo)))
                                  (setf (slot-value mo 'highlited) (equal mo cur-mo))
-                                 (mapcar #'redraw `(,(xy-plot mo) ,(v-plot mo)))))
+                                 (mapcar #'redraw `(,(xy-plot mo) ,(v-plot mo)))
+                                 (when (not mapping-mo)
+                                   (if (highlited mo)
+                                       (append-element (v-cnv mo) (graph img))
+                                       (remove-element (v-cnv mo))))))
                              (setf igrf-on nil)
                              (when cur-mo
-                               (if (not mapping-mo)
-                                   (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click for zoom/map mode)" (name cur-mo))))
+                               (when (not mapping-mo)
+                                 (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click for zoom/map mode)" (name cur-mo))))
                                (let ((v (funcall (xy-to-v cur-mo) (cons x y))))
                                  (when v
                                    (setf (jscl::oget igrf "style" "left") (format nil "~A%" (* cf (+ (car v) vmax))))
@@ -900,13 +1037,14 @@
                                  (setf (jscl::oget picker-hint "innerHTML") ""))))))))
         (set-picker-decoration))
       `(,picker-div
-        ,(make-label "Show picker:"
-           (setf (jscl::oget picker-div "style" "display") (if checked "block" "none")))
-        ,@(mapcar
-            (lambda (mo)
-              (make-label (format nil "Show ~A" (name mo))
-                (setf (slot-value mo 'active) checked)
-                (if checked
-                    (map nil #'add-plot `(,picker-grf ,img) `(,(xy-plot mo) ,(v-plot mo)))
-                    (map nil #'remove-plot `(,(xy-plot mo) ,(v-plot mo))))))
-            mappable-objects)))))
+        ,(create-element "div" :|style.display| "inline-block"
+           :append-element (make-label "Show picker:" nil
+                            (setf (jscl::oget picker-div "style" "display") (if checked "inline-block" "none")))
+           :append-elements (mapcar
+                              (lambda (mo)
+                                (make-label (format nil "Show ~A" (name mo)) (setup-elements mo)
+                                  (setf (slot-value mo 'active) checked)
+                                  (if checked
+                                      (map nil #'add-plot `(,picker-grf ,img) `(,(xy-plot mo) ,(v-plot mo)))
+                                      (map nil #'remove-plot `(,(xy-plot mo) ,(v-plot mo))))))
+                              mappable-objects))))))
