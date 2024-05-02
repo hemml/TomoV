@@ -8,6 +8,16 @@
    (secondary-mass)
    (period)))
 
+(lazy-slot primary-mass ((s real-profile-source))
+  1.0)
+
+(lazy-slot secondary-mass ((s real-profile-source))
+  1.0)
+
+(lazy-slot period ((s real-profile-source))
+  1.0)
+
+
 (defclass-f file-selector (omg-widget dont-transfer)
   ((items :accessor items
           :initform nil)
