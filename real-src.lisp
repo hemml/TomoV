@@ -566,7 +566,6 @@
                   when (> (aref v-dat (+ 3 (* i 4))) 0) do (mp i)))))
         ((jscl::oget xy-ctx "putImageData") xy-idat 0 0)))))
 
-
 (lazy-slot v-cnv ((mo mappable-object))
   (let ((resolution (resolution (params (source mo)))))
     (labels ((make-ev (btn)
@@ -874,6 +873,52 @@
 (defmethod-f qprop ((s real-profile-source))
   (/ (secondary-mass s) (primary-mass s)))
 
+(defclass-f picker-graph (saveable-graph)
+   ((to-hide :initform nil
+             :initarg :to-hide
+             :accessor to-hide)
+    (hidden-states :initform nil
+                   :accessor hidden-states
+                   :initarg :hidden-states)
+    (update-fn :initform (constantly nil)
+               :initarg :update-fn
+               :accessor update-fn)
+    (hls :accessor hls
+         :initform nil)))
+
+(defmethod-f save-dialog-enter ((p picker-graph))
+  (let ((mol (remove-if #'null (mapcar (lambda (p) (ignore-errors (source p))) (plots p)))))
+    (setf (slot-value p 'hls)
+          (mapcar #'cons
+                  mol
+                  (mapcar #'highlited mol)))
+    (map nil (lambda (m)
+               (setf (slot-value m 'highlited) nil)
+               (map nil #'redraw `(,(v-plot m) ,(xy-plot m))))
+             mol))
+  (setf (slot-value p 'hidden-states)
+        (mapcar (lambda (obj)
+                  (prog1
+                    (cons obj (jscl::oget obj "style" "visibility"))
+                    (setf (jscl::oget obj "style" "visibility") "hidden")))
+                (to-hide p))))
+
+(defmethod-f save-dialog-leave ((p picker-graph))
+  (map nil (lambda (obj vis)
+             (setf (jscl::oget obj "style" "visibility") vis))
+           (mapcar #'car (hidden-states p))
+           (mapcar #'cdr (hidden-states p)))
+  (map nil (lambda (m h)
+             (setf (slot-value m 'highlited) h)
+             (map nil #'redraw `(,(v-plot m) ,(xy-plot m))))
+           (mapcar #'car (hls p))
+           (mapcar #'cdr (hls p))))
+
+(defmethod-f redraw ((p picker-graph))
+  (prog1
+    (call-next-method)
+    (funcall (update-fn p))))
+
 (defmethod-f get-controls ((s real-profile-source) node &optional img matrix)
   (macrolet ((make-label (name add &rest code)
                (let ((app-block (gensym)))
@@ -922,19 +967,10 @@
                                      (> y ,ymin)
                                      (< y ,ymax))
                             ,@code))))))))
-    (let* ((picker-grf (make-instance 'graph :xmin -1 :xmax 2 :ymin -1 :ymax 1 :preserve-aspect-ratio t))
-           (picker-div (create-element "div" :|style.textAlign| "center"
-                                             :|style.display| "none"
-                                             :|style.width| "100%"
-                                             :|style.marginTop| "2em"
-                         :append-element
-                           (create-element "span" :|style.width| "80%"
-                                                  :|style.display| "inline-block"
-                             :append-element (render-widget picker-grf))))
-           (picker-hint (create-element "div" :|style.margin| "0.5em"
+    (let* ((picker-hint (create-element "div" :|style.margin| "0.5em"
                                               :|style.position| "absolute"
                                               :|style.right| 0
-                                              :|style.bottom| 0
+                                              :|style.top| 0
                                               :|style.fontSize| "0.75em"))
            (igrf (create-element "div" :|style.position| "absolute"
                                        :|style.width| "20px"
@@ -957,6 +993,28 @@
                            :|fill| "none"
                            (path :|stroke-width| "0.2em" :|d| "M 0,50 h 39 M 50,0 v 39 M 100,50 h -39 M 50,100 v -39")
                            (circle :|stroke-width| "0.2em" :|cx| 50 :|cy| 50 :|r| 30)))))
+           (clear-btn (create-element "button" :|innerHTML| "clear"
+                                               :|style.position| "absolute"
+                                               :|style.top| "0.25em"
+                                               :|style.right| "0.5em"
+                                               :|style.zIndex| 200
+                         :|onclick| (lambda (ev)
+                                      (let* ((xy-cnv (xy-cnv mapping-mo))
+                                             (xy-ctx ((jscl::oget xy-cnv "getContext") "2d"))
+                                             (vmres (v-map-res mapping-mo))
+                                             (xy-idat ((jscl::oget xy-ctx "getImageData") 0 0 vmres vmres))
+                                             (xy-dat (jscl::oget xy-idat "data"))
+                                             (resolution (resolution (params s)))
+                                             (v-cnv (v-cnv mapping-mo))
+                                             (v-ctx ((jscl::oget v-cnv "getContext") "2d"))
+                                             (v-idat ((jscl::oget v-ctx "getImageData") 0 0 resolution resolution))
+                                             (v-dat (jscl::oget v-idat "data")))
+                                        (loop for i below (* 4 (sqr vmres)) do (setf (aref xy-dat i) 0))
+                                        (loop for i below (* 4 (sqr resolution)) do (setf (aref v-dat i) 0))
+                                        ((jscl::oget v-ctx "putImageData") v-idat 0 0)
+                                        ((jscl::oget xy-ctx "putImageData") xy-idat 0 0))
+                                      (redraw (xy-plot mapping-mo))
+                                      ((jscl::oget ev "stopImmediatePropagation")))))
            (mappable-classes '(primary-roche-lobe
                                secondary-roche-lobe
                                primary-disk
@@ -964,6 +1022,16 @@
            (mappable-objects (mapcar (lambda (cls z) (make-instance cls :source s :matrix matrix :zindex z))
                                      mappable-classes
                                      (loop for i below (length mappable-classes) collect (+ 5 (* i 5)))))
+           (picker-grf (make-instance 'picker-graph :xmin -1 :xmax 2 :ymin -1 :ymax 1 :preserve-aspect-ratio t
+                                                    :to-hide (list clear-btn picker-hint)))
+           (picker-div (create-element "div" :|style.textAlign| "center"
+                                             :|style.display| "none"
+                                             :|style.width| "100%"
+                                             :|style.marginTop| "2em"
+                         :append-element
+                           (create-element "span" :|style.width| "80%"
+                                                  :|style.display| "inline-block"
+                             :append-element (render-widget picker-grf))))
 
            (vmax (max-v (params s)))
            (cf (/ 100 (* 2 vmax))) ;; 100 is a 100%
@@ -976,76 +1044,59 @@
       (labels ((set-picker-decoration ()
                  (let* ((grf (graph picker-grf)))
                    (append-element picker-hint grf)
-                   (if mapping-mo
-                       (append-element (create-element "button" :|innerHTML| "clear"
-                                                                :|style.position| "absolute"
-                                                                :|style.top| "0.25em"
-                                                                :|style.right| "0.5em"
-                                                                :|style.zIndex| 200
-                                          :|onclick| (lambda (ev)
-                                                       (let* ((xy-cnv (xy-cnv mapping-mo))
-                                                              (xy-ctx ((jscl::oget xy-cnv "getContext") "2d"))
-                                                              (vmres (v-map-res mapping-mo))
-                                                              (xy-idat ((jscl::oget xy-ctx "getImageData") 0 0 vmres vmres))
-                                                              (xy-dat (jscl::oget xy-idat "data"))
-                                                              (resolution (resolution (params s)))
-                                                              (v-cnv (v-cnv mapping-mo))
-                                                              (v-ctx ((jscl::oget v-cnv "getContext") "2d"))
-                                                              (v-idat ((jscl::oget v-ctx "getImageData") 0 0 resolution resolution))
-                                                              (v-dat (jscl::oget v-idat "data")))
-                                                         (loop for i below (* 4 (sqr vmres)) do (setf (aref xy-dat i) 0))
-                                                         (loop for i below (* 4 (sqr resolution)) do (setf (aref v-dat i) 0))
-                                                         ((jscl::oget v-ctx "putImageData") v-idat 0 0)
-                                                         ((jscl::oget xy-ctx "putImageData") xy-idat 0 0))
-                                                       (redraw (xy-plot mapping-mo))
-                                                       ((jscl::oget ev "stopImmediatePropagation"))))
-                                       grf))
+                   (when mapping-mo
+                     (append-element clear-btn grf))
                    (setf (jscl::oget grf "onclick")
                          (lambda (ev)
-                           (if mapping-mo
-                               (with-xy ev
-                                 (when (not (inside mapping-mo x y))
-                                   (destructuring-bind (xmin xmax ymin ymax) last-bnd
-                                     (rescale picker-grf :xmin xmin :xmax xmax :ymin ymin :ymax ymax))
-                                   (remove-element (v-cnv mapping-mo))
-                                   (setf (slot-value mapping-mo 'selected) nil)
-                                   (setf mapping-mo nil)
-                                   (set-picker-decoration)))
-                               (when cur-mo
-                                 (setf mapping-mo cur-mo)
-                                 (setf (slot-value mapping-mo 'selected) t)
-                                 (append-element (v-cnv mapping-mo) (graph img))
-                                 (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click outside to unzoom)" (name mapping-mo)))
-                                 (setf last-bnd (loop for i in `(,#'xmin ,#'xmax ,#'ymin ,#'ymax) collect (funcall i picker-grf)))
-                                 (destructuring-bind (xmin xmax ymin ymax) (bounds mapping-mo)
-                                   (rescale picker-grf :xmin xmin :xmax xmax :ymin ymin :ymax ymax)
-                                   (set-picker-decoration))))))
+                           (when (not (in-save-dialog picker-grf))
+                             (if mapping-mo
+                                 (with-xy ev
+                                   (when (not (inside mapping-mo x y))
+                                     (destructuring-bind (xmin xmax ymin ymax) last-bnd
+                                       (rescale picker-grf :xmin xmin :xmax xmax :ymin ymin :ymax ymax))
+                                     (remove-element (v-cnv mapping-mo))
+                                     (setf (slot-value mapping-mo 'selected) nil)
+                                     (setf mapping-mo nil)
+                                     (set-picker-decoration)))
+                                 (when cur-mo
+                                   (setf mapping-mo cur-mo)
+                                   (setf (slot-value mapping-mo 'selected) t)
+                                   (append-element (v-cnv mapping-mo) (graph img))
+                                   (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click outside to unzoom)" (name mapping-mo)))
+                                   (setf last-bnd (loop for i in `(,#'xmin ,#'xmax ,#'ymin ,#'ymax) collect (funcall i picker-grf)))
+                                   (destructuring-bind (xmin xmax ymin ymax) (bounds mapping-mo)
+                                     (let ((dw (* 0.1 (- xmax xmin)))
+                                           (dh (* 0.1 (- ymax ymin))))
+                                       (rescale picker-grf :xmin (- xmin dw) :xmax (+ xmax dw) :ymin (- ymin dh) :ymax (+ ymax dh))
+                                       (set-picker-decoration))))))))
                    (setf (jscl::oget grf "onmousemove")
                          (lambda (ev)
-                           (with-xy ev
-                             (setf cur-mo (loop for mo in (reverse mappable-objects)
-                                            when (and (active mo) (inside mo x y)) return mo))
-                             (loop for mo in mappable-objects do
-                               (when (not (equal (equal mo cur-mo) (highlited mo)))
-                                 (setf (slot-value mo 'highlited) (equal mo cur-mo))
-                                 (mapcar #'redraw `(,(xy-plot mo) ,(v-plot mo)))
+                           (when (and (not (in-save-dialog picker-grf))
+                                      (equal "http://www.w3.org/2000/svg" (jscl::oget ev "target" "namespaceURI")))
+                             (with-xy ev
+                               (setf cur-mo (loop for mo in (reverse mappable-objects)
+                                              when (and (active mo) (inside mo x y)) return mo))
+                               (loop for mo in mappable-objects do
+                                 (when (not (equal (equal mo cur-mo) (highlited mo)))
+                                   (setf (slot-value mo 'highlited) (equal mo cur-mo))
+                                   (mapcar #'redraw `(,(xy-plot mo) ,(v-plot mo)))
+                                   (when (not mapping-mo)
+                                     (if (highlited mo)
+                                         (append-element (v-cnv mo) (graph img))
+                                         (remove-element (v-cnv mo))))))
+                               (setf igrf-on nil)
+                               (when cur-mo
                                  (when (not mapping-mo)
-                                   (if (highlited mo)
-                                       (append-element (v-cnv mo) (graph img))
-                                       (remove-element (v-cnv mo))))))
-                             (setf igrf-on nil)
-                             (when cur-mo
-                               (when (not mapping-mo)
-                                 (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click for zoom/map mode)" (name cur-mo))))
-                               (let ((v (funcall (xy-to-v cur-mo) (cons x y))))
-                                 (when v
-                                   (setf (jscl::oget igrf "style" "left") (format nil "~A%" (* cf (+ (car v) vmax))))
-                                   (setf (jscl::oget igrf "style" "top") (format nil "~A%" (* cf (- vmax (cdr v)))))
-                                   (setf igrf-on t))))
-                             (setf (jscl::oget igrf "style" "visibility") (if igrf-on "visible" "hidden"))
-                             (if (and (not igrf-on) (not mapping-mo))
-                                 (setf (jscl::oget picker-hint "innerHTML") ""))))))))
-        (set-picker-decoration))
+                                   (setf (jscl::oget picker-hint "innerHTML") (format nil "~A (click for zoom/map mode)" (name cur-mo))))
+                                 (let ((v (funcall (xy-to-v cur-mo) (cons x y))))
+                                   (when v
+                                     (setf (jscl::oget igrf "style" "left") (format nil "~A%" (* cf (+ (car v) vmax))))
+                                     (setf (jscl::oget igrf "style" "top") (format nil "~A%" (* cf (- vmax (cdr v)))))
+                                     (setf igrf-on t))))
+                               (setf (jscl::oget igrf "style" "visibility") (if igrf-on "visible" "hidden"))
+                               (if (and (not igrf-on) (not mapping-mo))
+                                   (setf (jscl::oget picker-hint "innerHTML") "")))))))))
+        (funcall (setf (slot-value picker-grf 'update-fn) #'set-picker-decoration)))
       `(,picker-div
         ,(create-element "div" :|style.display| "inline-block"
            :append-element (make-label "Show picker:" nil

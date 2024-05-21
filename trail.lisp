@@ -1,6 +1,6 @@
 (in-package :tomo)
 
-(defclass-f trail-graph (graph watcher)
+(defclass-f trail-graph (saveable-graph watcher)
   ((xcaption :initform (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "Vx (km/s)")
              :accessor xcaption)
    (ycaption :initform "Phase"
@@ -11,7 +11,8 @@
            :accessor yticks)
    (show-scales :initform '(:left :top :right :bottom))
    (last-max :initform nil
-             :accessor last-max)))
+             :accessor last-max)
+   (name :initform "Trail spectra")))
 
 (defclass-f trail-plot (tabular-plot)
   ((phase :initarg :phase

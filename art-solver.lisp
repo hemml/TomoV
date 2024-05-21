@@ -431,11 +431,13 @@
                      (remove-element el)
                      ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "revokeObjectURL") url))))
           (let* ((max-v (max-v (params s)))
-                 (img (make-instance 'graph :xmin (- max-v) :xmax max-v
-                                            :ymin (- max-v) :ymax max-v
-                                            :scales '(:left :right :top :bottom)
-                                            :preserve-aspect-ratio t
-                                            :xcaption "V (km/s)" :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")))
+                 (img (make-instance 'saveable-graph :xmin (- max-v) :xmax max-v
+                                                     :ymin (- max-v) :ymax max-v
+                                                     :scales '(:left :right :top :bottom)
+                                                     :preserve-aspect-ratio t
+                                                     :xcaption "V (km/s)"
+                                                     :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")
+                                                     :name (format nil "~A tomogram" (name (source (solver s))))))
                  (ctrls (get-controls (source (solver s)) (graph img) img (matrix (solver s))))
                  (plt (make-instance 'matrix-plot :matrix (matrix (solver s)) :norm t
                                                   :xmin (xmin img) :xmax (xmax img)
@@ -448,14 +450,15 @@
                  (state-on "Start image reconstruction")
                  (state-off "Stop reconstruction"))
             (multiple-value-bind (ads-data emm-data sum-data ads-min emm-max) (get-adsp-data)
-              (let ((pcyg-grf (make-instance 'graph :xmin (- max-v) :xmax max-v
-                                                    :ymin ads-min
-                                                    :ymax emm-max
-                                                    :scales '(:left :bottom)
-                                                    :xcaption "V (km/s)"
-                                                    :ycaption (create-element "span" :|style.whiteSpace| "nowrap"
-                                                                                     :|style.fontFamily| "serif"
-                                                                                     :|innerHTML| "I")))
+              (let ((pcyg-grf (make-instance 'saveable-graph :xmin (- max-v) :xmax max-v
+                                                             :ymin ads-min
+                                                             :ymax emm-max
+                                                             :scales '(:left :bottom)
+                                                             :xcaption "V (km/s)"
+                                                             :ycaption (create-element "span" :|style.whiteSpace| "nowrap"
+                                                                                              :|style.fontFamily| "serif"
+                                                                                              :|innerHTML| "I")
+                                                             :name (format nil "~A abs-emm lines" (name (source (solver s))))))
                     (ads-plt (make-instance 'tabular-plot :table ads-data :color "blue"))
                     (emm-plt (make-instance 'tabular-plot :table emm-data :color "red")))
                     ; (sum-plt (make-instance 'tabular-plot :table sum-data :color "black")))
@@ -491,7 +494,7 @@
                                                                    (loop for i below nx collect
                                                                      (let ((vx (* 2 max-v (- (/ i (1- nx)) 0.5))))
                                                                          (format nil "~A ~A ~A~%" vx vy (aref m (+ i (* nx j))))))))))))))))
-                  :append-element (create-element "div" :|style.height| "10em"
+                  :append-element (create-element "div" :|style.height| "15em"
                                                         :|style.width| "15em"
                                                         :|style.display| "inline-block"
                                                         :|style.marginTop| "1em"
