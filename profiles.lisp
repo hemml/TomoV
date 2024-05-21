@@ -375,39 +375,49 @@
                                                              :|style.marginRight| "1em"
                                                              :|innerHTML| "export"
                                       :|onclick| (lambda (ev)
-                                                   (let* ((buf (jscl::make-new (winref "ArrayBuffer") 10))
-                                                          (siz (store-to-buffer s buf))
-                                                          (buf (jscl::make-new (winref "ArrayBuffer") siz))
-                                                          (siz (store-to-buffer s buf))
-                                                          (blob (jscl::make-new  (winref "Blob")
-                                                                     (jscl::make-new (winref "Array") buf)
-                                                                     (make-js-object :|type| "application/octet-stream")))
-                                                          (url ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "createObjectURL") blob))
-                                                          (el (create-element "a" :|href| url
-                                                                                  :|download| (format nil "~A.tmv" (name s)))))
-                                                     (append-element el)
-                                                     ((jscl::oget el "click"))
-                                                     (remove-element el)
-                                                     ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "revokeObjectURL") url))))
+                                                   (append-element
+                                                     (render-widget (make-instance 'load-store-progress
+                                                                      :obj s :label "Storing data:" :direction :out
+                                                                      :final-cb (lambda (buf siz)
+                                                                                  (let* ((blob (jscl::make-new  (winref "Blob")
+                                                                                                 (jscl::make-new (winref "Array") buf)
+                                                                                                 (make-js-object :|type| "application/octet-stream")))
+                                                                                         (url ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "createObjectURL") blob))
+                                                                                         (el (create-element "a" :|href| url
+                                                                                                                 :|download| (format nil "~A.tmv"
+                                                                                                                               (if (name s)
+                                                                                                                                   (name s)
+                                                                                                                                   "unnamed")))))
+                                                                                    (append-element el)
+                                                                                    ((jscl::oget el "click"))
+                                                                                    (remove-element el)
+                                                                                    ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "revokeObjectURL") url))))))))
                                   :append-element (if (name s) (name s) "New data source")
                                   :append-element
                                     (create-element "button" :|style.display| "table-cell"
                                                              :|style.marginLeft| "1em"
                                                              :|innerHTML| "save"
                                       :|onclick| (lambda (ev)
-                                                   (if (name s)
-                                                       (indexed-db-put "Tomo" "sources" (name s) s)
-                                                       (append-element
-                                                         (render-widget
-                                                           (with-self sd
-                                                             (make-instance 'save-dialog
-                                                               :onsave (lambda (name)
-                                                                         (setf (slot-value s 'name) name)
-                                                                         (indexed-db-add "Tomo" "sources" name s
-                                                                           :when-ok (lambda ()
-                                                                                      (update (lst *app*) :redraw t)
-                                                                                      (redraw s)
-                                                                                      (close sd)))))))))))
+                                                   (labels ((sav (&optional sd)
+                                                              (append-element
+                                                                (render-widget (make-instance 'load-store-progress
+                                                                                 :obj s :label "Saving data:" :direction :out
+                                                                                 :final-cb (lambda (buf siz)
+                                                                                             (indexed-db-add "Tomo" "sources" (name s) buf
+                                                                                               :when-ok (lambda ()
+                                                                                                          (update (lst *app*) :redraw t)
+                                                                                                          (redraw s)
+                                                                                                          (if sd (close sd)))
+                                                                                               :raw t)))))))
+                                                     (if (name s)
+                                                         (sav)
+                                                         (append-element
+                                                           (render-widget
+                                                             (with-self sd
+                                                               (make-instance 'save-dialog
+                                                                 :onsave (lambda (name)
+                                                                           (setf (slot-value s 'name) name)
+                                                                           (sav sd))))))))))
                                   :append-element
                                     (create-element "button" :|style.display| "table-cell"
                                                              :|style.marginLeft| "0.5em"

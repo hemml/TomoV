@@ -39,9 +39,13 @@
                               ; :|style.marginTop| "0.5em"
           :add-style ":hover {cursor: pointer;background: #f0f0ff}"
           :|onclick| (lambda (ev)
-                       (indexed-db-get (s ("Tomo" "sources" (name o)))
-                         (source-loaded s)
-                         (append-element (render-widget s) (main-root *app*)))))))
+                       (indexed-db-get (buf ("Tomo" "sources" (name o)) t)
+                         (append-element
+                           (render-widget (make-instance 'load-store-progress
+                                            :buffer buf :label "Loading data:" :direction :in
+                                            :final-cb (lambda (s n)
+                                                        (source-loaded s)
+                                                        (append-element (render-widget s) (main-root *app*)))))))))))
 
 (defmethod-f render-widget ((l obj-list))
   (setf (slot-value l 'root)
@@ -99,6 +103,55 @@
                                                (close d))))))
           (variants d)))
     (root d)))
+
+(defclass-f save-as-dialog (modal-dialog-window)
+  ((obj :accessor obj
+        :initarg :obj)))
+
+(defmethod-f render-widget :after ((w save-as-dialog))
+  (let ((err (create-element "div" :|style.color| "red"
+                                   :|style.textAlign| "center"
+                                   :|style.marginTop| "0.5em"))
+        (inp (create-element "input" :|style.width| "20em"
+                                     :|style.textAlign| "center"
+                                     :value (name (obj w)))))
+    (append-element
+      (create-element "div" :|style.border| "0.1em solid black"
+                            :|style.border-radius| "0.5em"
+                            :|style.padding| "0.5em"
+                            :|style.background| "#fffff0"
+        :append-element
+          (create-element "span" :|style.paddingRight| "1em"
+                                 :|style.textAlign| "center"
+                                 :|innerHTML| "Save as:")
+        :append-element inp
+        :append-element err
+        :append-element
+          (create-element "div" :|style.textAlign| "center"
+                                :|style.marginTop| "0.5em"
+            :append-element (create-element "button" :|innerHTML| "save"
+                              :|onclick| (lambda (ev)
+                                           (indexed-db-get-all-keys (val ("Tomo" "sources"))
+                                             (let ((name (jscl::oget inp "value")))
+                                               (if (position name val :test #'equal)
+                                                   (setf (jscl::oget err "innerHTML") "Image already exists!")
+                                                   (let ((obj (obj w)))
+                                                     (setf (slot-value obj 'name) name)
+                                                     (close w)
+                                                     (append-element
+                                                       (render-widget (make-instance 'load-store-progress
+                                                                        :obj obj :label "Saving data:" :direction :out
+                                                                        :final-cb (lambda (buf siz)
+                                                                                    (indexed-db-add "Tomo" "sources" name buf
+                                                                                      :when-ok (lambda ()
+                                                                                                 (update (lst *app*) :redraw t))
+                                                                                      :raw t)))))))))))
+
+            :append-element (create-element "button" :|innerHTML| "cancel"
+                                                     :|style.marginLeft| "1em"
+                              :|onclick| (lambda (ev)
+                                           (close w)))))
+      (root w))))
 
 (defmethod-f render-widget ((a app))
   (setf (slot-value a 'root)
@@ -180,12 +233,12 @@
                                           (loop for f across (jscl::oget ev "dataTransfer" "items") do
                                               ((jscl::oget ((jscl::oget ((jscl::oget f "getAsFile")) "arrayBuffer")) "then")
                                                (lambda (buf)
-                                                 (let ((src (load-from-buffer buf)))
-                                                   (describe src)
-                                                   (if (name src)
-                                                       (indexed-db-add "Tomo" "sources" (name src) src
-                                                         :when-ok (lambda ()
-                                                                    (update (lst *app*) :redraw t))))))))
+                                                 (append-element
+                                                   (render-widget (make-instance 'load-store-progress
+                                                                    :buffer buf :label "Loading data:" :direction :in
+                                                                    :final-cb (lambda (src n)
+                                                                                (append-element
+                                                                                  (render-widget (make-instance 'save-as-dialog :obj src))))))))))
                                           (setf (jscl::oget d "style" "background") "#fafafa")
                                           (setf files nil)
                                           nil))))))
