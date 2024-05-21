@@ -46,29 +46,7 @@
               :|d| ,(apply #'jscl::concat
                            (cons (format nil "M~A,~A " (caar tbl) (+ ymin (- ymax (cdar tbl))))
                                  (loop for i in (cdr tbl) collect
-                                   (format nil "L~A,~A " (car i) (+ ymin (- ymax (cdr i)))))))
-              :|onmouseover| ,(lambda (ev)
-                                (jslog "OVER!" ev))
-                                ; (setf (jscl::oget ev "target" "style" "strokeWidth") "3px"))
-              :|onmouseenter| ,(lambda (ev)
-                                 (jslog "ENTER!" ev))
-              :|onclick| ,(lambda (ev)
-                            (jslog "CLICK!" ev))
-              :|onmousemove| ,(lambda (ev)
-                                (jslog "MOVE!" ev))
-              :|onmouseleave| ,(lambda (ev)
-                                 (jslog "LEAVE!" ev))
-              :|onmouseout| ,(lambda (ev)
-                               (jslog "OUT!" ev))))))
-                               ; (setf (jscl::oget ev "target" "style" "strokeWidth") "1px"))))))
-        ; (path :|stroke| "blue"
-        ;       :|stroke-width| "5px"
-        ;       :|vector-effect| "non-scaling-stroke"
-        ;       :|fill| "none"
-        ;       :|d| ,(apply #'jscl::concat
-        ;                    (cons (format nil "M~A,~A " (caar tbl) (+ ymin (- ymax (cdar tbl))))
-        ;                          (loop for i in (cdr tbl) collect
-        ;                            (format nil "L~A,~A " (car i) (+ ymin (- ymax (cdr i)))))))
+                                   (format nil "L~A,~A " (car i) (+ ymin (- ymax (cdr i)))))))))))
 
 (defmethod-f add-plot :after ((g trail-graph) (p trail-plot))
   (let* ((mx (apply #'max (mapcar #'cdr (slot-value p 'table)))))
