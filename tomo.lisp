@@ -14,6 +14,24 @@
   (pushnew (make-pathname :directory '(:absolute "home/omg/TomoV")) asdf:*central-registry*)
   (asdf:load-system :tomo-v))
 
+(defun update-devel-image ()
+  (inferior-shell:run
+    `(and (cd "/home/omg/quicklisp/local-projects")
+          (rm -fr "TomoV" "OMGlib" ,(omgdaemon::version-file-path omgdaemon::+devel-version+) "/home/omg/.cache/common-lisp")
+          (git clone "https://github.com/hemml/TomoV.git")
+          (git clone :recurse-submodules "https://github.com/hemml/OMGlib.git")
+          (cd "/home/omg")
+          (sbcl :load "/home/omg/quicklisp/setup.lisp"
+                :eval ,(let ((*package* (find-package :cl)))
+                        (write-to-string
+                          '(ql:quickload :omg)))
+                :eval ,(let ((*package* (find-package :cl)))
+                        (write-to-string
+                          '(progn
+                             (ql:quickload :tomo-v)
+                             (omgdaemon::makimg (omgdaemon::version-file-path omgdaemon::+devel-version+)))))))))
+
+
 (defclass-f load-store-progress (modal-dialog-window)
   ((label :accessor label
           :initform nil
