@@ -155,8 +155,7 @@
                     :data (loop for p in body when (and (>= (car p) (- max-v))
                                                         (<= (car p) max-v))
                             collect p)
-                    :params (params (source parent))
-                    :offset ofs))))))
+                    :params (params (source parent))))))))
 
 (defmethod-f render-widget ((fi file-selector-item))
   (setf (slot-value fi 'root)
