@@ -4,9 +4,9 @@
   ((name :accessor name
          :initform nil)
    (files :accessor files)
-   (primary-mass)
-   (secondary-mass)
-   (period)))
+   (primary-mass :initform 1.0)
+   (secondary-mass :initform 1.0)
+   (period :initform 1.0)))
 
 (lazy-slot primary-mass ((s real-profile-source))
   1.0)
