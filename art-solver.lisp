@@ -161,7 +161,7 @@
                  (grad (make-array (list ldsp) :initial-element 0))
                  (grad-i (make-array (list ldsp) :initial-element 0))
                  (prof-cur-i (apply #'concatenate (cons 'list (mapcar (lambda (p) (cur-i p s)) profs))))
-                 (prof-vals (apply #'concatenate (cons 'list (mapcar #'cdr prof-dats))))
+                 (prof-vals (apply #'concatenate (cons 'list prof-dats)))
                  (prof-adsc (apply #'concatenate (cons 'list (mapcar (lambda (p) (ads-cache p s)) profs))))
                  (prof-means (apply #'concatenate (cons 'list (mapcar (lambda (p) (prof-mean p (source s))) profs))))
                  (ph-weights (loop for p in profs append (mapcar (constantly (phase-weight p)) (data p))))
@@ -192,7 +192,7 @@
                                 (c0 chi)
                                 (old-adsp (map 'vector #',fn adsp))
                                 (safe-adsp (copy-seq old-adsp))
-                                (smooth-cf 0.3))
+                                (smooth-cf 0.33))
                            (labels ((apply-grad ()
                                       (loop for i below ldsp do
                                         (setf (,fn (aref adsp i))
