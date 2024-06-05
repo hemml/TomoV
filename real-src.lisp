@@ -408,6 +408,42 @@
                                                                  :parent fs))
                                         (items fs)))
                                 (redraw fs)))))
+        :append-element
+          (create-element "div" :|style.width| "100%"
+                                :|style.display| "inline-block"
+                                :|style.marginTop| "1em"
+            :append-element "Load phases from file:"
+            :append-element
+              (with-self fil
+                (create-element "input" :|type| "file"
+                                        :|style.width| "50%"
+                                        :|style.marginLeft| "2em"
+                  :|onchange| (lambda (ev)
+                                (let ((rd (jscl::make-new (winref "FileReader"))))
+                                  (setf (jscl::oget rd "onload")
+                                        (lambda (ev)
+                                          (let* ((lines ((jscl::oget (jscl::lisp-to-js (jscl::oget rd "result")) "split")
+                                                         (jscl::make-new (winref "RegExp")
+                                                                         (jscl::lisp-to-js
+                                                                           (format nil "~C?~C" (code-char 13) (code-char 10))))))
+                                                 (r1 (jscl::make-new (winref "RegExp") (jscl::lisp-to-js (format nil "[~C ]+" #\tab)))))
+                                            (loop for l across lines do
+                                              (let* ((flds ((jscl::oget (jscl::lisp-to-js l) "split") r1))
+                                                     (phase1 (ignore-errors (js-parse-float (jscl::oget flds 0))))
+                                                     (phase2 (ignore-errors (js-parse-float (jscl::oget flds 1))))
+                                                     (itm1 (ignore-errors (find (jscl::oget flds 0) (items fs) :key #'name :test #'equal)))
+                                                     (itm2 (ignore-errors (find (jscl::oget flds 1) (items fs) :key #'name :test #'equal))))
+                                                (jslog flds phase1 phase2 itm1 itm2)
+                                                (destructuring-bind (item phase)
+                                                  (cond ((and itm2 (numberp phase1) (not (is-nan phase1))) (list itm2 phase1))
+                                                        ((and itm1 (numberp phase2) (not (is-nan phase2))) (list itm1 phase2))
+                                                        (t (list nil nil)))
+                                                  (when item
+                                                    (setf (slot-value item 'phase) phase)))))
+                                            (redraw fs)
+                                            (remake-profiles s))))
+                                  ((jscl::oget rd "readAsText") (jscl::oget fil "files" 0)))))))
+
         :append-element (render-widget fs)))
     (src-root s)))
 
