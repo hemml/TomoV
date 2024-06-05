@@ -41,9 +41,9 @@
   1.0e-3)
 
 (lazy-slot absorbtion-profile ((s art-solver))
-  (let* ((len (floor (* 2 (resolution (params s)))))
+  (let* ((len (resolution (params s)))
          (arr (make-array (list len)))
-         (max-v (* 1.5 (max-v (params s)))))
+         (max-v (max-v (params s))))
     (loop for i below len do
       (setf (aref arr i) (list (* 2 max-v (- (/ i (1- len)) 0.5))
                                1.0
@@ -186,9 +186,10 @@
             (funcall bar-cb 0.9)
             ; (format t "GRAD: ~A" grad)
             ; (format t "GRAD-I: ~A" grad-i)
+            ; (format t "ADSP: ~A" adsp)
             (macrolet ((mk-ae-step (grad fn del dmin dmax ddef)
                         `(let* ((grad-l (/ 1.0 (sqrt (loop for x across ,grad sum (sqr x)))))
-                                (adelta (max 1.e-3 (,del s)))
+                                (adelta (max 1.e-5 (,del s)))
                                 (c0 chi)
                                 (old-adsp (map 'vector #',fn adsp))
                                 (safe-adsp (copy-seq old-adsp))
@@ -196,10 +197,11 @@
                            (labels ((apply-grad ()
                                       (loop for i below ldsp do
                                         (setf (,fn (aref adsp i))
-                                              (max ,dmin (min ,dmax (+ (,fn (aref adsp i)) (* adelta grad-l (aref ,grad i)))))))
+                                              (max ,dmin (min ,dmax (- (,fn (aref adsp i)) (* adelta step grad-l (aref ,grad i)))))))
+                                      ; (format t "ADSP: ~A" adsp)
                                       (reset (source s))))
                              (apply-grad)
-                             (loop while (and (> (chi (source s) s) c0) (> adelta 1e-3)) do
+                             (loop while (and (> (chi (source s) s) c0) (> adelta 1e-5)) do
                                (progn
                                  (setf adelta (* adelta 0.5))
                                  (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref old-adsp i)))
@@ -208,12 +210,12 @@
                                  (progn
                                    (loop until (> (chi (source s) s) c0) do
                                      (progn
-                                       (setf c0 (chi (source s) s))
                                        (setf adelta (* adelta 1.5))
+                                       (setf c0 (chi (source s) s))
                                        (setf old-adsp (map 'vector #',fn adsp))
-                                       (apply-grad)))
-                                   (when (< delta 1.0)
-                                     (setf delta 1.1))))
+                                       (apply-grad)))))
+                                   ; (when (< adelta 1.0)
+                                   ;   (setf adelta 1.1))))
                              (loop for i below ldsp do
                                (setf (,fn (aref adsp i))
                                      (+ (* smooth-cf (if (> i 0) (aref old-adsp (1- i)) ,ddef))
