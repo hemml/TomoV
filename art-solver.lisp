@@ -213,9 +213,9 @@
                                        (setf adelta (* adelta 1.5))
                                        (setf c0 (chi (source s) s))
                                        (setf old-adsp (map 'vector #',fn adsp))
-                                       (apply-grad)))))
-                                   ; (when (< adelta 1.0)
-                                   ;   (setf adelta 1.1))))
+                                       (apply-grad)))
+                                   (when (< delta 1.0)
+                                     (setf delta 1.1))))
                              (loop for i below ldsp do
                                (setf (,fn (aref adsp i))
                                      (+ (* smooth-cf (if (> i 0) (aref old-adsp (1- i)) ,ddef))
