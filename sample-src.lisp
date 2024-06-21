@@ -37,27 +37,27 @@
 
 (defmethod-f add-save-element ((g sample-picker))
   (ensure-element (root g)
-    (setf (jscl::oget (parent-element (root g)) "style" "position") "relative")
+    ; (setf (jscl::oget (parent-element (root g)) "style" "position") "relative")
     (append-element
       (with-self label
         (add-event-listener "mouseenter"
           (lambda (ev)
             (when (not (in-save-dialog g))
-              (setf (jscl::oget label "style" "display") "inline-block")))
+              (setf (jscl::oget label "style" "visibility") "visible")))
           :element (parent-element (root g)))
         (add-event-listener "mouseleave"
           (lambda (ev)
-            (setf (jscl::oget label "style" "display") "none"))
+            (setf (jscl::oget label "style" "visibility") "hidden"))
           :element (parent-element (root g)))
         (create-element "a" :|href| "#"
                             :|innerHTML| "save image"
-                            :|style.position| "absolute"
+                            :|style.position| "relative"
                             :|style.right| 0
                             :|style.bottom| 0
                             :|style.zIndex| "1000"
-                            :|style.display| "none"
+                            :|style.visibility| "hidden"
           :|onclick| (lambda (ev)
-                       (setf (jscl::oget label "style" "display") "none")
+                       (setf (jscl::oget label "style" "visibility") "hidden")
                        (append-element
                          (render-widget (make-instance 'save-image-dialog :element g))))))
       (parent-element (root g)))))
