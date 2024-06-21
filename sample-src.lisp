@@ -306,7 +306,7 @@
                            (when (not (equal cur-sym (sample-char s)))
                              (if a-div (remove-element a-div))
                              (setf a-div (get-a-div s))
-                             (append-element a-div (parent-element node))
+                             (append-element a-div (graph img))
                              (ensure-element node
                                (setf (jscl::oget a-div "style" "fontSize")
                                      (jscl::oget node "clientHeight"))))
