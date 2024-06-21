@@ -287,7 +287,7 @@
                                      (close sd))))
                   (root sd))))))))))
 
-(defmethod-f render-widget :after ((g saveable-graph))
+(defmethod-f add-save-element ((g saveable-graph))
   (append-element
     (with-self label
       (add-event-listener "mouseenter"
@@ -311,3 +311,6 @@
                      (append-element
                        (render-widget (make-instance 'save-image-dialog :element g))))))
     (graph g)))
+
+(defmethod-f render-widget :after ((g saveable-graph))
+  (add-save-element g))

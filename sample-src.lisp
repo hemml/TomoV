@@ -3,12 +3,12 @@
 (defclass-f sample-profile-source (profile-source-widget)
   ((npoints)
    (snr :accessor snr
-        :initform 10)
+        :initform 1000)
    (picker :accessor picker)
    (sample-char :accessor sample-char
                 :initform "A")))
 
-(defclass-f sample-picker (graph watcher)
+(defclass-f sample-picker (saveable-graph watcher)
   ((matrix :accessor matrix)
    (normal-plot)
    (blured-plot)
@@ -34,6 +34,33 @@
 
 (lazy-slot npoints ((s sample-profile-source))
   (jsfloor (* 1.5 (resolution (params s)))))
+
+(defmethod-f add-save-element ((g sample-picker))
+  (ensure-element (root g)
+    (setf (jscl::oget (parent-element (root g)) "style" "position") "relative")
+    (append-element
+      (with-self label
+        (add-event-listener "mouseenter"
+          (lambda (ev)
+            (when (not (in-save-dialog g))
+              (setf (jscl::oget label "style" "display") "inline-block")))
+          :element (parent-element (root g)))
+        (add-event-listener "mouseleave"
+          (lambda (ev)
+            (setf (jscl::oget label "style" "display") "none"))
+          :element (parent-element (root g)))
+        (create-element "a" :|href| "#"
+                            :|innerHTML| "save image"
+                            :|style.position| "absolute"
+                            :|style.right| 0
+                            :|style.bottom| 0
+                            :|style.zIndex| "1000"
+                            :|style.display| "none"
+          :|onclick| (lambda (ev)
+                       (setf (jscl::oget label "style" "display") "none")
+                       (append-element
+                         (render-widget (make-instance 'save-image-dialog :element g))))))
+      (parent-element (root g)))))
 
 (defmethod-f update-params ((s sample-profile-source) (p parameters))
   (setf (slot-value s 'npoints) (jsfloor (* (resolution p) 1.5)))
