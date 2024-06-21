@@ -154,18 +154,14 @@
                                               :set-val (lambda (v)
                                                          (labels ((upd ()
                                                                     (oget-bind (gw gh) element ("clientWidth" "clientHeight")
-                                                                      (jslog "GGG:" gw gh scal v)
                                                                       (setf (jscl::oget root-svg "viewBox" "baseVal" "width")
                                                                             (* v0 (/ scal v)))
                                                                       (setf (jscl::oget root-svg "viewBox" "baseVal" "height")
                                                                             (* v0 (/ scal v) (/ gh gw))))))
-                                                           (jslog "S1")
                                                            (upd)
-                                                           (jslog "S2")
                                                            ((jscl::oget (jscl::%js-vref "self") "requestAnimationFrame")
                                                             (lambda (ev)
-                                                              (execute-after 0.01 #'upd)))
-                                                           (jslog "S3"))))
+                                                              (execute-after 0.01 #'upd))))))
 
                             :append-element
                               (create-element "tr"
