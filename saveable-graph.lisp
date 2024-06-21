@@ -117,7 +117,10 @@
                              `(with-self ,img
                                 (create-element "img" :|style.width| "100%"
                                                       :|style.height| "100%"
-                                                      :src (format nil "data:image/svg+xml;charset=utf-8;base64,~A" (funcall (winref "btoa") (jscl::lisp-to-js (get-svg))))
+                                                      :src (format nil "data:image/svg+xml;charset=utf-8;base64,~A"
+                                                             (funcall (winref "btoa")
+                                                               (funcall (winref "unescape")
+                                                                 (funcall (winref "encodeURIComponent") (jscl::lisp-to-js (get-svg))))))
                                   :|onload| (lambda (,(gensym))
                                               (oget-bind (w h) root-svg ("clientWidth" "clientHeight")
                                                 (let* ((,cnv (create-element "canvas" :|width| resol
