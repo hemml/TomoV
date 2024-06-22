@@ -275,7 +275,36 @@
                                                       (if (search "image/svg" mime-type)
                                                           (save (get-svg-url))
                                                           (with-image-url url
-                                                            (save url)))))))))
+                                                            (save url)))))))
+                            :append-element
+                              (create-element "tr"
+                                :append-element
+                                  (create-element "td" :colspan 2
+                                    :append-element
+                                      (create-element "button" :|innerHTML| "print image"
+                                                               :|style.margin| "1em"
+                                                               :|style.width| "100%"
+                                        :|onclick| (lambda (ev)
+                                                     (oget-bind (w h) root-svg ("clientWidth" "clientHeight")
+                                                       (let* ((blob (jscl::make-new (winref "Blob")
+                                                                      (jscl::make-new (winref "Array")
+                                                                        (jscl::lisp-to-js
+                                                                          (format nil "<html><style>@media print {@page {size: ~Acm ~Acm;}}</style><body><img src=\"~A\" style=\"height: 100%;\"></body>"
+                                                                                         10 (* 10 (/ h w))
+                                                                                         (get-svg-url))))
+                                                                      (make-js-object :|type| "text/html;charset=utf-8")))
+                                                              (win (create-element "iframe" :|style.display| "none"
+                                                                                            :|style.width|  resol
+                                                                                            :|style.height| (* resol (/ h w))
+                                                                                            :|src| ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "createObjectURL") blob))))
+                                                         (labels ((clos (ev)
+                                                                    (remove-element win)))
+                                                           (setf (jscl::oget win "onload") (lambda (ev)
+                                                                                             ((jscl::oget win "contentWindow" "print")))
+                                                                 (jscl::oget win "onbeforeunload") #'clos
+                                                                 (jscl::oget win "onafterprint") #'clos)
+                                                           (append-element win))))))
+                                    :append-element "(Use \"Print to file\" to save vector pdf.)"))))
                     :append-element
                       (create-element "button" :|innerHTML| "close"
                                                :|style.position| "absolute"
