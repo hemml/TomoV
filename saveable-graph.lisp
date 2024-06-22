@@ -70,6 +70,16 @@
                          (append-element a)
                          ((jscl::oget a "click"))
                          (remove-element a)))
+                     (upd-pix-res (v)
+                       (labels ((upd ()
+                                  (oget-bind (gw gh) element ("clientWidth" "clientHeight")
+                                    (setf (jscl::oget root-svg "viewBox" "baseVal" "width")
+                                          (* v0 (/ scal v)))
+                                    (setf (jscl::oget root-svg "viewBox" "baseVal" "height")
+                                          (* v0 (/ scal v) (/ gh gw))))))
+                         (upd)
+                         ((jscl::oget (jscl::%js-vref "self") "requestAnimationFrame")
+                          (lambda (ev) (execute-after 0.01 #'upd)))))
                      (make-edit-fld (name &key slot
                                                (init (slot-value elsd slot))
                                                (convert #'identity)
@@ -129,6 +139,7 @@
                                                   ((jscl::oget ,ctx "drawImage") ,img 0 0 resol (floor (* resol (/ h w))))
                                                   (let ((,url ((jscl::oget ,cnv "toDataURL") mime-type)))
                                                     ,@code)))))))))
+                (execute-after 0.1 (lambda () (upd-pix-res 1)))
                 (append-element
                   (create-element "div" :|style.background| "white"
                                         :|style.border| "1px solid black"
@@ -154,17 +165,7 @@
                                               :err-check (lambda (v)
                                                            (when (not (and v (not (is-nan v)) (> v 0)))
                                                              "it must be a number >0"))
-                                              :set-val (lambda (v)
-                                                         (labels ((upd ()
-                                                                    (oget-bind (gw gh) element ("clientWidth" "clientHeight")
-                                                                      (setf (jscl::oget root-svg "viewBox" "baseVal" "width")
-                                                                            (* v0 (/ scal v)))
-                                                                      (setf (jscl::oget root-svg "viewBox" "baseVal" "height")
-                                                                            (* v0 (/ scal v) (/ gh gw))))))
-                                                           (upd)
-                                                           ((jscl::oget (jscl::%js-vref "self") "requestAnimationFrame")
-                                                            (lambda (ev)
-                                                              (execute-after 0.01 #'upd))))))
+                                              :set-val #'upd-pix-res)
 
                             :append-element
                               (create-element "tr"
