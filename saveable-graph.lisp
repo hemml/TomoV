@@ -280,6 +280,7 @@
                               (create-element "tr"
                                 :append-element
                                   (create-element "td" :colspan 2
+                                                       :align "center"
                                     :append-element
                                       (create-element "button" :|innerHTML| "print image"
                                                                :|style.margin| "1em"
@@ -304,7 +305,9 @@
                                                                  (jscl::oget win "onbeforeunload") #'clos
                                                                  (jscl::oget win "onafterprint") #'clos)
                                                            (append-element win))))))
-                                    :append-element "(Use \"Print to file\" to save vector pdf.)"))))
+                                    :append-element
+                                      (create-element "span" :|innerHTML| "(Use \"Print to file\" to save vector pdf.)"
+                                                             :|style.fontSize| "0.75em")))))
                     :append-element
                       (create-element "button" :|innerHTML| "close"
                                                :|style.position| "absolute"
