@@ -17,7 +17,8 @@
             :accessor low-snr)
    (fit-abs)
    (fit-emm)
-   (absorbtion-profile)))
+   (absorbtion-profile)
+   (iteration-limit)))
 
 (defclass-f solver-widget (omg-widget watcher)
   ((solver :accessor solver)))
@@ -27,6 +28,9 @@
         :accessor img)
    (ctrls :initarg :ctrls
           :accessor ctrls)))
+
+(lazy-slot iteration-limit ((s art-solver))
+  0)
 
 (lazy-slot fit-abs ((s art-solver))
   nil)
@@ -251,12 +255,15 @@
             (delta-sum 0)
             (adelta-sum 0)
             (idelta-sum 0)
+            (iter-lim (iteration-limit s))
             res)
         (loop until flg do
           (let ((tim1 ((jscl::oget (jscl::make-new (winref "Date")) "getTime"))))
             (setf res (multiple-value-list (calc-step s bar-cb)))
-            (setf flg (or (< (delta s) 1) (> (- tim1 tim0) 10000)))
             (setf (slot-value s 'cur-step) (1+ (cur-step s)))
+            (setf flg (or (< (delta s) 1)
+                          (> (- tim1 tim0) 10000)
+                          (and (> iter-lim 0) (cur-step s) (>= (cur-step s) iter-lim))))
             (incf n)
             (incf delta-sum (delta s))
             (incf adelta-sum (ads-delta s))
@@ -580,6 +587,17 @@
                                                          (when (and v (not (is-nan val)))
                                                            (setf (slot-value (solver s) 'noize-treshold) v)
                                                            v))))))
+                            (create-element "div" :|style.marginTop| "0.5em"
+                              :append-element
+                                (create-element "span" :|style.marginRight| "1em"
+                                                       :|innerHTML| "Iteration limit:")
+                              :append-element
+                                (render-widget (make-instance 'editable-field :value (iteration-limit (solver s))
+                                                 :ok (lambda (val)
+                                                       (let ((v (js-parse-float val)))
+                                                         (when (and v (not (is-nan val)))
+                                                           (setf (slot-value (solver s) 'iteration-limit) v)
+                                                           v))))))
                             (create-element "button" :|style.width| "80%"
                                                      :|style.marginTop| "1em"
                                                      :|innerHTML| "Reset absorbtion"
@@ -631,7 +649,9 @@
                                                           (setf (slot-value pcyg-grf 'ymax) emm-max)
                                                           (redraw pcyg-grf)))
                                                       (if state
-                                                          (if (> (delta (solver s)) 1.0)
+                                                          (if (and (> (delta (solver s)) 1.0)
+                                                                   (or (equal (iteration-limit (solver s)) 0)
+                                                                       (< (cur-step (solver s)) (iteration-limit (solver s)))))
                                                               (mk-step)
                                                               (progn
                                                                 (setf state nil)
