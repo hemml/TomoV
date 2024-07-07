@@ -13,6 +13,7 @@
    (wrk :accessor wrk)
    (solver-chi)
    (noize-treshold)
+   (lsnr-degree)
    (low-snr :initform nil
             :accessor low-snr)
    (fit-abs)
@@ -28,6 +29,9 @@
         :accessor img)
    (ctrls :initarg :ctrls
           :accessor ctrls)))
+
+(lazy-slot lsnr-degree ((s art-solver))
+  3.0)
 
 (lazy-slot iteration-limit ((s art-solver))
   0)
@@ -98,13 +102,14 @@
          (max-d (max-d (source s)))
          (dbg (funcall bar-cb 0.07))
          (lsnr (low-snr s))
+         (lsnrd (lsnr-degree s))
          (nzt (noize-treshold s))
          (ofs (offset (source s)))
          (all-data (mapcar (lambda (w d c m pw ads)
                              (list w
                                    (- d c)
                                    (* pw (if lsnr
-                                             (+ nzt (/ (max 0 (- m ofs)) max-d))
+                                             (+ nzt (expt (/ (max 0 (- m ofs)) max-d) lsnrd))
                                              1.0))
                                    ads))
                            (apply #'concatenate (cons 'list prof-weights))
@@ -177,14 +182,14 @@
                     (setf (aref grad cc)
                           (+ (aref grad cc)
                              (* phw
-                                (if lsnr (+ nzt (/ (max 0 pm) max-d)) 1.0)
+                                (if lsnr (+ nzt (expt (/ (max 0 pm) max-d) lsnrd)) 1.0)
                                 (- (sqr (- cp (+ emm (* (- ci emm) (/ (+ ads step) ads)))))
                                    (sqr (- cp ci)))))))
                 (if f-e
                     (setf (aref grad-i cc)
                           (+ (aref grad-i cc)
                              (* phw
-                                (if lsnr (+ nzt (/ (max 0 pm) max-d)) 1.0)
+                                (if lsnr (+ nzt (expt (/ (max 0 pm) max-d) lsnrd)) 1.0)
                                 (- (sqr (- cp (+ ci delta)))
                                    (sqr (- cp ci)))))))))
             (funcall bar-cb 0.9)
@@ -586,6 +591,17 @@
                                                        (let ((v (js-parse-float val)))
                                                          (when (and v (not (is-nan val)))
                                                            (setf (slot-value (solver s) 'noize-treshold) v)
+                                                           v))))))
+                            (create-element "div" :|style.marginTop| "0.5em"
+                              :append-element
+                                (create-element "span" :|style.marginRight| "1em"
+                                                       :|innerHTML| "Low-SNR degree:")
+                              :append-element
+                                (render-widget (make-instance 'editable-field :value (lsnr-degree (solver s))
+                                                 :ok (lambda (val)
+                                                       (let ((v (js-parse-float val)))
+                                                         (when (and v (not (is-nan val)))
+                                                           (setf (slot-value (solver s) 'lsnr-degree) v)
                                                            v))))))
                             (create-element "div" :|style.marginTop| "0.5em"
                               :append-element
