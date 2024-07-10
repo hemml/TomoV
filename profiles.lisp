@@ -11,9 +11,6 @@
    (max-d)
    (prof-mean)
    (offset)
-   (offset :initform 0
-           :initarg :offset
-           :accessor offset)
    (phase-weight :initform 1
                  :accessor phase-weight)
    (phase :initarg :phase
