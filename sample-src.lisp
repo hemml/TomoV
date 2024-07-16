@@ -248,17 +248,31 @@
                          (cons (* 2.0 max-v (- (/ i (- spec-n 1)) 0.5)) nil))
                  :params params))
          (wm (weights prof prog-cb 0.1 0.9))
-         (ii (/ 1.0 (loop for r in (data prof) and w across wm sum
-                      (setf (cdr r)
-                            (let ((x (loop for i below (length w) by 2 sum
-                                       (* (aref m (aref w i)) (aref w (+ i 1))))))
-                              x)))))
-         (sa (* ii (/ 1.0 snr) (apply #'max (mapcar #'cdr (data prof))))))
+         (ii (/ spec-n
+                (loop for r in (data prof) and w across wm sum
+                  (setf (cdr r)
+                        (loop for i below (length w) by 2 sum
+                          (* (aref m (aref w i)) (aref w (+ i 1)))))))))
     (loop for r in (data prof) do
       (setf (cdr r)
-            (+ ofs (* 100.0 (+ (* sa (jsrandom)) (* ii (cdr r)))))))
+            (+ ofs (* ii (cdr r)))))
     (funcall prog-cb 1.0)
     prof))
+
+(defmethod-f add-noise ((s sample-profile-source) snr ofs &key prof)
+  (let* ((alldata (loop for p in (profiles s) append (mapcar #'cdr (data p))))
+         (alldata (loop for d in alldata collect (- d ofs)))
+         (len (length alldata))
+         (rms (sqrt (/ (loop for d in alldata sum (sqr d))
+                       len))))
+    (jslog rms snr)
+    (labels ((adn (p)
+               (loop for d in (data p) do
+                 (setf (cdr d) (+ (cdr d) (* 3 (/ rms snr) (jsrandom)))))
+               (update-profile-plots p s)))
+      (if prof
+        (adn prof)
+        (map nil #'adn (profiles s))))))
 
 (defmethod-f get-a-div ((s sample-profile-source))
   (let* ((nx (resolution (params s)))
@@ -422,6 +436,7 @@
                                       (get-profile m (params s) ph np snr (offset s) pcb))
                                     (progn
                                       (add-profile s prof)
+                                      (add-noise s snr (offset s) :prof prof)
                                       (close pw))))))))
                   rp))
           :append-element (mkfld "Symbol:" (sample-char (picker s)) 'sample-char nil
@@ -531,6 +546,7 @@
                                                                              (length done-flags)))
                                                    (when (notany #'null done-flags)
                                                      (map nil #'kill workers)
+                                                     (add-noise s snr (offset s))
                                                      (close pb)))))))))))))))
           :append-element
             (create-element "div" :|style.width| "100%"
