@@ -290,7 +290,7 @@
                                                        (let* ((blob (jscl::make-new (winref "Blob")
                                                                       (jscl::make-new (winref "Array")
                                                                         (jscl::lisp-to-js
-                                                                          (format nil "<html><style>@media print {@page {size: ~Acm ~Acm;}}</style><body><img src=\"~A\" style=\"height: 100%;\"></body>"
+                                                                          (format nil "<html><style>@media print {@page {size: ~Acm ~Acm;margin 0pt;padding: 0pt;}}</style><body><img src=\"~A\" style=\"height: 100%;\"></body>"
                                                                                          10 (* 10 (/ h w))
                                                                                          (get-svg-url))))
                                                                       (make-js-object :|type| "text/html;charset=utf-8")))
