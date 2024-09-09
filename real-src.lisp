@@ -1007,6 +1007,12 @@
                                               :|style.right| 0
                                               :|style.top| 0
                                               :|style.fontSize| "0.75em"))
+           (vmax (max-v (params s)))
+           (cf (/ 100 (* 2 vmax))) ;; 100 is a 100%
+           (igrf-on nil)
+           (cur-mo nil)
+           (mapping-mo nil)
+           (last-bnd nil)
            (igrf (create-element "div" :|style.position| "absolute"
                                        :|style.width| "20px"
                                        :|style.height| "20px"
@@ -1066,14 +1072,7 @@
                          :append-element
                            (create-element "span" :|style.width| "80%"
                                                   :|style.display| "inline-block"
-                             :append-element (render-widget picker-grf))))
-
-           (vmax (max-v (params s)))
-           (cf (/ 100 (* 2 vmax))) ;; 100 is a 100%
-           (igrf-on nil)
-           (cur-mo nil)
-           (mapping-mo nil)
-           (last-bnd nil))
+                             :append-element (render-widget picker-grf)))))
       (ensure-element (if (slot-boundp img 'graph) (graph img))
         (append-element igrf (graph img)))
       (labels ((set-picker-decoration ()
