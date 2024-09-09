@@ -40,7 +40,10 @@
 
 (defclass-f save-dialog (modal-dialog-window)
   ((onsave :initarg :onsave
-           :accessor onsave)))
+           :accessor onsave)
+   (name :initarg name
+         :accessor name
+         :initform "new data source")))
 
 (defclass-f delete-dialog (modal-dialog-window)
   ((src :initarg :source
@@ -290,7 +293,8 @@
 
 (defmethod-f render-widget :after ((sd save-dialog))
   (append-element
-    (let ((inp (create-element "input" :|style.marginLeft| "1em")))
+    (let ((inp (create-element "input" :|style.marginLeft| "1em"
+                                       :value (name sd))))
       (create-element "div" :|style.border| "0.1em solid black"
                             :|style.border-radius| "0.5em"
                             :|style.padding| "0.5em"
@@ -400,21 +404,30 @@
                                                                 (render-widget (make-instance 'load-store-progress
                                                                                  :obj s :label "Saving data:" :direction :out
                                                                                  :final-cb (lambda (buf siz)
-                                                                                             (indexed-db-add "Tomo" "sources" (name s) buf
-                                                                                               :when-ok (lambda ()
-                                                                                                          (update (lst *app*) :redraw t)
-                                                                                                          (redraw s)
-                                                                                                          (if sd (close sd)))
-                                                                                               :raw t)))))))
-                                                     (if (name s)
-                                                         (sav)
-                                                         (append-element
-                                                           (render-widget
-                                                             (with-self sd
-                                                               (make-instance 'save-dialog
-                                                                 :onsave (lambda (name)
-                                                                           (setf (slot-value s 'name) name)
-                                                                           (sav sd))))))))))
+                                                                                             (indexed-db-get-all-keys (val ("Tomo" "sources"))
+                                                                                               (if (position (name s) val :test #'equal)
+                                                                                                   (indexed-db-put "Tomo" "sources" (name s) buf
+                                                                                                     :when-ok (lambda ()
+                                                                                                                (update (lst *app*) :redraw t)
+                                                                                                                (redraw s)
+                                                                                                                (if sd (close sd)))
+                                                                                                     :raw t)
+                                                                                                   (indexed-db-add "Tomo" "sources" (name s) buf
+                                                                                                     :when-ok (lambda ()
+                                                                                                                (update (lst *app*) :redraw t)
+                                                                                                                (redraw s)
+                                                                                                                (if sd (close sd)))
+                                                                                                     :raw t)))))))))
+                                                     (append-element
+                                                       (render-widget
+                                                         (with-self sd
+                                                           (make-instance 'save-dialog
+                                                             :onsave (lambda (name)
+                                                                       (setf (slot-value s 'name) name)
+                                                                       (sav sd))
+                                                             :name (if (name s)
+                                                                       (name s)
+                                                                       "new source"))))))))
                                   :append-element
                                     (create-element "button" :|style.display| "table-cell"
                                                              :|style.marginLeft| "0.5em"
