@@ -41,7 +41,7 @@
 (defclass-f save-dialog (modal-dialog-window)
   ((onsave :initarg :onsave
            :accessor onsave)
-   (name :initarg name
+   (name :initarg :name
          :accessor name
          :initform "new data source")))
 
