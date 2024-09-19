@@ -5,7 +5,7 @@
   :licence "MIT"
   :homepage "https://github.com/hemml/TomoV"
   :source-control "https://github.com/hemml/TomoV.git"
-  :depends-on ("omg" "inferior-shell")
+  :depends-on ("omg" "inferior-shell" "omgdaemon")
   :build-operation "static-program-op"
   :components ((:static-file "README.md")
                (:static-file "LICENSE")

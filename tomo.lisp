@@ -1,7 +1,7 @@
 (ql:quickload :omg)
 
 (defpackage :tomo
-  (:use cl omg omgui jscl omgdaemon omgwidgets))
+  (:use cl omg omgui jscl omgdaemon daemonui omgwidgets))
 
 (in-package :tomo)
 
