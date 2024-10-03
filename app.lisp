@@ -322,6 +322,7 @@
 
 (defun omg-init (port)
   (setf omg::*use-wss* t)
+  (setf *debugger-hook* (lambda (&rest args) (declare (ignore args))))
   (funcall old-init port))
 
 (set-boot '(my-boot))
