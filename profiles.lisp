@@ -23,10 +23,12 @@
    (ads-cache)))
 
 
-(defclass-f profile-source (watcher)
+(defclass-conf profile-source (watcher)
   ((profiles :accessor profiles
              :initform (list))
-   (offset)
+   (offset :desc "Continuum level"
+           :type :number
+           :initform 1)
    (mean)
    (chi)
    (max-d)

@@ -1,12 +1,22 @@
 (in-package :tomo)
 
-(defclass-f real-profile-source (profile-source-widget)
+(defclass-conf real-profile-source (profile-source-widget)
   ((name :accessor name
          :initform nil)
    (files :accessor files)
-   (primary-mass :initform 1.0)
-   (secondary-mass :initform 1.0)
-   (period :initform 1.0)))
+   (primary-mass :initform 1.0
+                 :desc "Primary mass (solar masses)"
+                 :type :number
+                 :validator (lambda (v) (> v 0)))
+   (secondary-mass :initform 1.0
+                   :desc "Secondary mass (solar masses)"
+                   :type :number
+                   :validator (lambda (v) (> v 0)))
+   (period :initform 1.0
+           :desc "Orbital period (days)"
+           :type :number
+           :validator (lambda (v) (> v 0)))))
+
 
 (lazy-slot primary-mass ((s real-profile-source))
   1.0)
@@ -332,53 +342,7 @@
     (let ((fs (files s)))
       (create-element "div" :|style.textAlign| "center"
                             :|style.float| "left"
-        :append-element
-          (create-element "div"
-            :append-element
-              (create-element "span" :|innerHTML| "Continuum level:"
-                                     :|style.marginRight| "1em")
-            :append-element
-              (render-widget (make-instance 'editable-field :value (offset s)
-                               :ok (lambda (val)
-                                     (let ((v (js-parse-float val)))
-                                       (when (and v (not (is-nan v)))
-                                         (setf (slot-value s 'offset) v)
-                                         (remake-profiles s)
-                                         v))))))
-        :append-element
-          (create-element "div" :|style.marginTop| "1em"
-            :append-element
-              (create-element "span" :|innerHTML| "Primary mass (solar massess):"
-                                     :|style.marginRight| "1em")
-            :append-element
-              (render-widget (make-instance 'nulable-fld :value (primary-mass s)
-                               :ok (lambda (val)
-                                     (let ((v (js-parse-float val)))
-                                       (when (and v (not (is-nan v)) (> v 0))
-                                         (setf (slot-value s 'primary-mass) v)))))))
-        :append-element
-          (create-element "div" :|style.marginTop| "1em"
-            :append-element
-              (create-element "span" :|innerHTML| "Secondary mass (solar massess):"
-                                     :|style.marginRight| "1em")
-            :append-element
-              (render-widget (make-instance 'nulable-fld :value (secondary-mass s)
-                               :ok (lambda (val)
-                                     (let ((v (js-parse-float val)))
-                                       (when (and v (not (is-nan v)) (> v 0))
-                                         (setf (slot-value s 'secondary-mass) v)))))))
-        :append-element
-          (create-element "div" :|style.marginTop| "1em"
-            :append-element
-              (create-element "span" :|innerHTML| "Orbital period (days):"
-                                     :|style.marginRight| "1em")
-            :append-element
-              (render-widget (make-instance 'nulable-fld :value (period s)
-                               :ok (lambda (val)
-                                     (let ((v (js-parse-float val)))
-                                       (when (and v (not (is-nan v)) (> v 0))
-                                         (setf (slot-value s 'period) v)))))))
-
+        :append-elements (render-config s)
         :append-element
           (create-element "div" :|style.width| "100%"
                                 :|style.display| "inline-block"
