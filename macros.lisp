@@ -34,19 +34,25 @@
                             append (list (car v) (cadr v)))))
                 slots))
      (defmethod-f render-config ((obj ,name))
-       ,@(loop for s in slots when (position :desc s) collect
-           (destructuring-getf (desc type variants validator) (cdr s)
-             `(create-element "div" :|style.marginTop| "1em"
-                :append-element
-                  (create-element "span" :|innerHTML| ,desc
-                                         :|style.marginRight| "1em")
-                :append-element
-                  ,(case type
-                     (:number `(render-widget (make-instance 'nulable-fld :value (slot-value obj ',(car s))
-                                                :ok (lambda (val)
-                                                      (let ((v (js-parse-float val)))
-                                                        (when (and v
-                                                                   (not (is-nan v))
-                                                                   ,@(if validator `((funcall ,validator v))))
-                                                          (setf (slot-value obj ',(car s)) v)))))))
-                     (t (error (format nil "Invalid slot type: ~A" type))))))))))
+       (append (call-next-method)
+               (list ,@(loop for s in slots when (position :desc s) collect
+                         (destructuring-getf (desc type variants validator) (cdr s)
+                           (declare (ignorable variants))
+                           `(create-element "div" :|style.marginTop| "1em"
+                              :append-element
+                                (create-element "span" :|innerHTML| (format nil "~A:" ,desc)
+                                                       :|style.marginRight| "1em")
+                              :append-element
+                                ,(case type
+                                   (:number `(render-widget (make-instance 'nulable-fld :value (let ((v (slot-value obj ',(car s))))
+                                                                                                 (if (> (abs v) 1)
+                                                                                                     (* (signum v) (/ (floor (+ 0.5 (* 1e6 (abs v)))) 1e6))
+                                                                                                     v))
+                                                              :ok (lambda (val)
+                                                                    (let ((v (js-parse-float val)))
+                                                                      (when (and v
+                                                                                 (not (is-nan v))
+                                                                                 ,@(if validator `((funcall ,validator v))))
+                                                                        (setf (slot-value obj ',(car s)) v)
+                                                                        val))))))
+                                   (t (error (format nil "Invalid slot type: ~A" type))))))))))))
