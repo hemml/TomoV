@@ -19,3 +19,34 @@
 (def-local-macro-f with-self (var &rest code)
   `(let (,var)
      (setf ,var (progn ,@code))))
+
+(defmacro destructuring-getf (vals var &rest code)
+  `(destructuring-bind ,vals (list ,@(mapcar (lambda (v) `(getf ,var ,(intern (symbol-name v) :keyword))) vals))
+     ,@code))
+
+(defmacro defclass-conf (name super slots)
+  `(progn
+     (defclass-f ,name ,super
+       ,(mapcar (lambda (s)
+                  (cons (car s)
+                        (loop for v on (cdr s) by #'cddr
+                          when (not (position (car v) '(:desc :type :validator :variants)))
+                            append (list (car v) (cadr v)))))
+                slots))
+     (defmethod-f render-config ((obj ,name))
+       ,@(loop for s in slots when (position :desc s) collect
+           (destructuring-getf (desc type variants validator) (cdr s)
+             `(create-element "div" :|style.marginTop| "1em"
+                :append-element
+                  (create-element "span" :|innerHTML| ,desc
+                                         :|style.marginRight| "1em")
+                :append-element
+                  ,(case type
+                     (:number `(render-widget (make-instance 'nulable-fld :value (slot-value obj ',(car s))
+                                                :ok (lambda (val)
+                                                      (let ((v (js-parse-float val)))
+                                                        (when (and v
+                                                                   (not (is-nan v))
+                                                                   ,@(if validator `((funcall ,validator v))))
+                                                          (setf (slot-value obj ',(car s)) v)))))))
+                     (t (error (format nil "Invalid slot type: ~A" type))))))))))
