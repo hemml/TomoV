@@ -15,7 +15,14 @@
    (period :initform 1.0
            :desc "Orbital period (days)"
            :type :number
-           :validator (lambda (v) (> v 0)))))
+           :validator (lambda (v) (> v 0)))
+   (inclination :initform 90.0
+           :desc "Inclination (degree)"
+           :type :number
+           :validator (lambda (v) (and (> v 0) (<= v 90))))
+   (phase-primary :initform t
+                  :desc "Primary closest on phase 0"
+                  :type :checkbox)))
 
 
 (lazy-slot primary-mass ((s real-profile-source))
