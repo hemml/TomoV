@@ -63,7 +63,7 @@
   (make-instance 'parameters))
 
 (lazy-slot trail ((s profile-source))
-  (make-instance 'trail-graph :params (params s)))
+  (make-instance 'trail-graph :params (params s) :source s))
 
 (defmethod-f reset ((p profile))
   (slot-makunbound p 'cur-i)
@@ -278,6 +278,7 @@
 
 (defmethod-f remove-all-profiles ((s profile-source))
   (setf (slot-value s 'profiles) (list))
+  (setf (slot-value (trail s) 'last-max) nil)
   (remove-all-plots (trail s))
   (reset s))
 
