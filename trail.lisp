@@ -6,13 +6,19 @@
    (ycaption :initform "Phase"
              :accessor ycaption)
    (ymin :initform 0)
-   (ymax :initform 1.2)
+   (ymax :initform 1.1)
    (yticks :initform 20
            :accessor yticks)
    (show-scales :initform '(:left :top :right :bottom))
-   (last-max :initform nil
-             :accessor last-max)
+   (curv-cf  :initform nil
+             :accessor curv-cf)
+   (source :accessor source
+           :initarg :source)
    (name :initform "Trail spectra")))
+
+(defclass-f trail-profile (profile)
+  ((mcl :initform nil)
+   (next-prof :initform nil)))
 
 (defclass-f trail-plot (tabular-plot)
   ((phase :initarg :phase
@@ -25,15 +31,68 @@
   (max-v (params g)))
 
 (defmethod-f table ((p trail-plot))
-  (let ((mx (if (last-max (parent p))
-                (last-max (parent p))
-                1))
-        (phase (phase p)))
-    (mapcar
-      (lambda (xy)
-        (cons (car xy)
-              (+ phase (* 0.2 (/ (cdr xy) mx)))))
-      (slot-value p 'table))))
+  (with-slots (parent table phase) p
+    (let ((cf (curv-cf parent))
+          (ofs (offset (source parent))))
+      (mapcar
+        (lambda (xy)
+          (cons (car xy)
+                (+ phase (* cf (- (cdr xy) ofs)))))
+        table))))
+
+
+
+(defmethod-f curv-cf ((g trail-graph))
+  (with-slots (curv-cf source) g
+    (when (not curv-cf)
+      (with-accessors ((xmin xmin) (xmax xmax)) g
+        (labels ((flt (p)
+                   (remove-if (lambda (x)
+                                (or (< (car x) xmin)
+                                    (> (car x) xmax)))
+                              (data p))))
+          (let ((profiles (profiles source)))
+            (when profiles
+              (let* ((s-profs (sort profiles #'< :key #'phase))
+                     (ofs (offset source))
+                     (delta 0.005)
+                     (cfmax (/ 0.1 (- (apply #'max (mapcar #'max-d profiles))
+                                      ofs)))
+                     (mcl (loop for (p1 p2) on s-profs when p2 collect
+                            (let ((dp (- (phase p2) (phase p1) delta))
+                                  (t1 (flt p1))
+                                  (t2 (flt p2))
+                                  cur-t2
+                                  res)
+                              (change-class p1 'trail-profile)
+                              (with-slots (mcl next-prof) p1
+                                (when (or (not mcl) (not (equal p2 next-prof)))
+                                  (loop while (and t1 t2) do
+                                     (let* ((p1 (car t1))
+                                            (p2 (car t2))
+                                            (x1 (car p1))
+                                            (x2 (car p2))
+                                            (y1 (- (cdr p1) ofs))
+                                            (y2 (- (cdr p2) ofs)))
+                                       (if (<= x2 x1)
+                                           (setf t2 (cdr t2)
+                                                 cur-t2 y2)
+                                           (if cur-t2
+                                               (setf t1 (cdr t1)
+                                                     res (if (> y1 cur-t2)
+                                                             (let ((r (/ dp (- y1 cur-t2))))
+                                                               (if res
+                                                                   (min res r)
+                                                                   r))
+                                                             res))
+                                               (setf t1 (cdr t1))))))
+                                  (setf mcl res
+                                        next-prof p2))
+                                mcl)))))
+                (setf curv-cf (apply #'min (cons cfmax (remove-if #'null mcl))))))))))
+    (if curv-cf
+        curv-cf
+        1)))
 
 (defmethod-f make-curve ((p trail-plot))
   (let* ((g (parent p))
@@ -49,10 +108,15 @@
                                  (loop for i in (cdr tbl) collect
                                    (format nil "L~A,~A " (car i) (+ ymin (- ymax (cdr i)))))))))))
 
+
 (defmethod-f add-plot :after ((g trail-graph) (p trail-plot))
-  (let* ((mx (apply #'max (mapcar #'cdr (slot-value p 'table)))))
-    (if (or (not (last-max g))
-            (> mx (* 1.1 (last-max g))))
-        (progn
-          (setf (slot-value g 'last-max) mx)
-          (redraw g)))))
+  (with-slots (curv-cf) g
+    (with-slots (phase table) p
+      (let* ((mv (max-v (params g)))
+             (ofs 1))
+        (setf curv-cf nil)
+        (redraw g)))))
+
+(defmethod-f remove-all-plots :after ((g trail-graph))
+  (with-slots (curv-cf) g
+    (setf curv-cf nil)))
