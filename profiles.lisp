@@ -67,6 +67,7 @@
 
 (defmethod-f reset ((p profile))
   (slot-makunbound p 'cur-i)
+  (slot-makunbound p 'max-d)
   (slot-makunbound p 'prof-mean)
   (slot-makunbound p 'ads-cache))
 
@@ -109,7 +110,9 @@
       ;          (cdr (aref adp (car i)))))))))
 
 (lazy-slot max-d ((p profile))
-  (apply #'max (mapcar #'cdr (data p))))
+  (let ((max-v (max-v (params p))))
+    (apply #'max (mapcar #'cdr (remove-if (lambda (x) (or (< (car x) (- max v)) (> (car x) max-v)))
+                                          (data p))))))
 
 (lazy-slot cur-i ((p profile) (s art-solver))
   (let ((adsp (ads-profile p s))
@@ -348,6 +351,11 @@
     (root dd)))
 
 (defmethod-f render-widget ((s profile-source-widget))
+  (when (slot-boundp s 'trail)
+    (with-slots (trail) s
+      (when (not (slot-boundp trail 'source)) ;; Backward compatibility
+        (setf (slot-value trail 'source) s)
+        (setf (slot-value trail 'curv-cf) nil))))
   (setf (slot-value s 'root)
         (let* ((slv (solver s)))
           (create-element "div" :|style.float| "left"
