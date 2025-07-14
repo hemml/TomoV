@@ -133,7 +133,8 @@
                           (if (and (not (equal st :foot))
                                    i v
                                    (not (is-nan i))
-                                   (not (is-nan v)))
+                                   (not (is-nan v))
+                                   (not (and (equal 0 i) (equal 0 v))))
                               (progn
                                 (setf st :body)
                                 (setf l1 (cons v i)))
@@ -187,7 +188,6 @@
                (clr2 "rgb(255, 195, 195)")
                (clr3 "rgb(195, 195, 195)")
                (bgcol (if enabled (if norm clr1 clr2) clr3))
-               (but (create-element "button" :|innerHTML| "remove"))
                (name (name fi))
                (tdl nil)
                (state phase))
@@ -196,9 +196,9 @@
                    (rm (ev)
                      (remove-file fi))
                    (set-b-state (&optional init)
-                     (setf (jscl::oget but "innerHTML") (if (and state (not init)) "update" "remove"))
-                     (setf (jscl::oget but "onclick") (if (and state (not init)) #'upd #'rm))
-                     (setf (jscl::oget but "style" "background") (if state clr1 clr2))
+                   ;   (setf (jscl::oget but "innerHTML") (if (and state (not init)) "update" "remove"))
+                   ;   (setf (jscl::oget but "onclick") (if (and state (not init)) #'upd #'rm))
+                   ;   (setf (jscl::oget but "style" "background") (if state clr1 clr2))
                      (loop for td in tdl do
                        (setf (jscl::oget td "style" "background") (if enabled (if state clr1 clr2) clr3))))
                    (make-td (&rest args)
@@ -290,7 +290,10 @@
                                        t)))))
               :append-element
                 (create-element "td" :|style.padding| "0.25em 1em"
-                  :append-element but))))))
+                  :append-element (create-element "button" :|innerHTML| "update"
+                                                           :|onclick| #'upd)
+                  :append-element (create-element "button" :|innerHTML| "remove"
+                                                           :|onclick| #'rm)))))))
 
 (defmethod-f render-widget ((fs file-selector))
   (setf (slot-value fs 'root)
