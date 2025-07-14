@@ -281,7 +281,7 @@
 
 (defmethod-f remove-all-profiles ((s profile-source))
   (setf (slot-value s 'profiles) (list))
-  (setf (slot-value (trail s) 'last-max) nil)
+  (setf (slot-value (trail s) 'curv-cf) nil)
   (remove-all-plots (trail s))
   (reset s))
 
