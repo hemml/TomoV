@@ -111,7 +111,7 @@
 
 (lazy-slot max-d ((p profile))
   (let ((max-v (max-v (params p))))
-    (apply #'max (mapcar #'cdr (remove-if (lambda (x) (or (< (car x) (- max v)) (> (car x) max-v)))
+    (apply #'max (mapcar #'cdr (remove-if (lambda (x) (or (< (car x) (- max-v)) (> (car x) max-v)))
                                           (data p))))))
 
 (lazy-slot cur-i ((p profile) (s art-solver))
