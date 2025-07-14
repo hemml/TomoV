@@ -259,20 +259,20 @@
     (funcall prog-cb 1.0)
     prof))
 
-(defmethod-f add-noise ((s sample-profile-source) snr ofs &key prof)
-  (let* ((alldata (loop for p in (profiles s) append (mapcar #'cdr (data p))))
+(defmethod-f add-noise ((s sample-profile-source) snr ofs &key prof (profs (profiles s)))
+  (let* ((alldata (loop for p in profs append (mapcar #'cdr (data p))))
          (alldata (loop for d in alldata collect (- d ofs)))
          (len (length alldata))
          (rms (sqrt (/ (loop for d in alldata sum (sqr d))
                        len))))
-    (jslog rms snr)
     (labels ((adn (p)
                (loop for d in (data p) do
-                 (setf (cdr d) (+ (cdr d) (* 3 (/ rms snr) (jsrandom)))))
-               (update-profile-plots p s)))
+                 (setf (cdr d) (+ (cdr d) (* 3 (/ rms snr) (jsrandom)))))))
       (if prof
         (adn prof)
-        (map nil #'adn (profiles s))))))
+        (map nil #'adn (profiles s)))
+      (when prof
+        (update-profile-plots prof s)))))
 
 (defmethod-f get-a-div ((s sample-profile-source))
   (let* ((nx (resolution (params s)))
@@ -523,7 +523,8 @@
                                    (append-element (render-widget pb))
                                    (multiple-value-bind (x rem) (floor 0.5 d)
                                      (let ((p (picker s))
-                                           (d (/ 1.0 (+ n (if (= 0 rem) 0.5 0)))))
+                                           (d (/ 1.0 (+ n (if (= 0 rem) 0.5 0))))
+                                           (prof-lst nil))
                                        (loop for i below n do
                                          (multiple-value-bind (x nw) (floor i ntasks)
                                            (let* ((i i)
@@ -540,13 +541,15 @@
                                                    (cache-vars ph)
                                                    (get-profile m (params s) ph np snr (offset s)))
                                                  (progn
-                                                   (add-profile s prof)
+                                                   (push prof prof-lst)
                                                    (setf (nth i done-flags) t)
                                                    (set-progress (bar pb) (/ (count-if (complement #'null) done-flags)
                                                                              (length done-flags)))
                                                    (when (notany #'null done-flags)
                                                      (map nil #'kill workers)
-                                                     (add-noise s snr (offset s))
+                                                     (mapcar (lambda (p) (add-profile s p)) prof-lst)
+                                                     (add-noise s snr (offset s) :profs prof-lst)
+                                                     (mapcar (lambda (p) (update-profile-plots p s)) prof-lst)
                                                      (close pb)))))))))))))))
           :append-element
             (create-element "div" :|style.width| "100%"
