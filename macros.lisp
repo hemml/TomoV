@@ -25,49 +25,75 @@
      ,@code))
 
 (defmacro defclass-conf (name super slots)
-  `(progn
-     (defclass-f ,name ,super
-       ,(mapcar (lambda (s)
-                  (cons (car s)
-                        (loop for v on (cdr s) by #'cddr
-                          when (not (position (car v) '(:desc :type :validator :variants :onchange)))
-                            append (list (car v) (cadr v)))))
-                slots))
-     (defmethod-f render-config ((obj ,name))
-       (append (when (next-method-p) (call-next-method))
-               (list ,@(loop for s in slots when (position :desc s) collect
-                         (destructuring-getf (desc type variants validator onchange) (cdr s)
-                           (declare (ignorable variants))
-                           `(create-element "div" :|style.marginTop| "1em"
-                              :append-element
-                                (create-element "span" :|innerHTML| (format nil "~A:" ,desc)
-                                                       :|style.marginRight| "1em")
-                              :append-element
-                                ,(case type
-                                   (:number `(render-widget (make-instance 'nulable-fld :value (let ((v (slot-value obj ',(car s))))
-                                                                                                 (if (> (abs v) 1)
-                                                                                                     (* (signum v) (/ (floor (+ 0.5 (* 1e6 (abs v)))) 1e6))
-                                                                                                     v))
-                                                              :ok (lambda (val)
-                                                                    (let ((v (js-parse-float val)))
-                                                                      (when (and v
-                                                                                 (not (is-nan v))
-                                                                                 ,@(if validator `((funcall ,validator v))))
-                                                                        (setf (slot-value obj ',(car s)) v)
-                                                                        ,(when onchange
-                                                                           (execute-after 0 (lambda () (funcall onchange v))))
-                                                                        val))))))
-                                   (:checkbox `(with-self box
-                                                 (create-element "input" :|type| "checkbox"
-                                                                         :|checked| (slot-value obj ',(car s))
-                                                   :|onclick| (lambda (ev)
-                                                                ,(when onchange
-                                                                   `(funcall ,onchange (jscl::oget box "checked")))
-                                                                ,(if validator
-                                                                     `(when (funcall ,validator (jscl::oget box "checked"))
-                                                                        (setf (slot-value obj ',(car s)) (jscl::oget box "checked")))
-                                                                     `(progn
-                                                                        (setf (slot-value obj ',(car s)) (jscl::oget box "checked"))
-                                                                        t))))))
+  (let ((config-roots (intern (symbol-name (gensym)))))
+    `(progn
+       (defparameter-f ,config-roots nil)
+       (defclass-f ,name ,super
+         ,(mapcar (lambda (s)
+                    (cons (car s)
+                          (loop for v on (cdr s) by #'cddr
+                            when (not (position (car v) '(:desc :type :validator :variants :onchange)))
+                              append (list (car v) (cadr v)))))
+                  slots))
+       (defmethod-f redraw-config ((obj ,name))
+         (when ,config-roots
+           (let ((roots (gethash obj ,config-roots)))
+             (when roots
+               (map nil (lambda (old new)
+                          ((jscl::oget (parent-element old) "insertBefore") new old)
+                          (remove-element old))
+                        roots
+                        (render-config obj))))))
+       (defmethod-f render-config ((obj ,name))
+         (when (not ,config-roots)
+           (setf ,config-roots (make-hash-table)))
+         (setf (gethash obj ,config-roots)
+               (append (when (next-method-p) (call-next-method))
+                       (list ,@(loop for s in slots when (position :desc s) collect
+                                 (destructuring-getf (desc type variants validator onchange) (cdr s)
+                                   (declare (ignorable variants))
+                                   `(create-element "div" :|style.marginTop| "1em"
+                                      :append-element
+                                        (create-element "span" :|innerHTML| (format nil "~A:" ,desc)
+                                                               :|style.marginRight| "1em")
+                                      :append-element
+                                        ,(case type
+                                           (:number `(render-widget (make-instance 'nulable-fld :value (let ((v (slot-value obj ',(car s))))
+                                                                                                         (if (> (abs v) 1)
+                                                                                                             (* (signum v) (/ (floor (+ 0.5 (* 1e6 (abs v)))) 1e6))
+                                                                                                             v))
+                                                                      :ok (lambda (val)
+                                                                            (let ((v (js-parse-float val)))
+                                                                              (when (and v
+                                                                                         (not (is-nan v))
+                                                                                         ,@(if validator `((funcall ,validator v))))
+                                                                                (setf (slot-value obj ',(car s)) v)
+                                                                                ,(when onchange
+                                                                                   `(execute-after 0 (lambda () (funcall ,onchange obj))))
+                                                                                val))))))
+                                           (:string `(render-widget (make-instance 'nulable-fld :value (slot-value obj ',(car s))
+                                                                      :ok (lambda (val)
+                                                                             (block nil
+                                                                               ,(if validator
+                                                                                    `(if (funcall ,validator val)
+                                                                                         (setf (slot-value obj ',(car s)) val)
+                                                                                         (return-from nil nil))
+                                                                                    `(setf (slot-value obj ',(car s)) val))
+                                                                               ,(when onchange
+                                                                                  `(funcall ,onchange obj))
+                                                                               val)))))
+                                           (:checkbox `(with-self box
+                                                           (create-element "input" :|type| "checkbox"
+                                                                                   :|checked| (slot-value obj ',(car s))
+                                                             :|onclick| (lambda (ev)
+                                                                          (block nil
+                                                                            ,(if validator
+                                                                                 `(if (funcall ,validator (jscl::oget box "checked"))
+                                                                                      (setf (slot-value obj ',(car s)) (jscl::oget box "checked"))
+                                                                                      (return-from nil nil))
+                                                                                 `(setf (slot-value obj ',(car s)) (jscl::oget box "checked")))
+                                                                            ,(when onchange
+                                                                               `(funcall ,onchange obj))
+                                                                            t)))))
 
-                                   (t (error (format nil "Invalid slot type: ~A" type))))))))))))
+                                           (t (error (format nil "Invalid slot type: ~A" type))))))))))))))
