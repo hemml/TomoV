@@ -1,20 +1,65 @@
 (in-package :tomo)
 
-(defclass-f trail-graph (saveable-graph watcher)
-  ((xcaption :initform (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "Vx (km/s)")
-             :accessor xcaption)
-   (ycaption :initform "Phase"
-             :accessor ycaption)
-   (ymin :initform 0)
-   (ymax :initform 1.1)
-   (yticks :initform 20
-           :accessor yticks)
-   (show-scales :initform '(:left :top :right :bottom))
-   (curv-cf  :initform nil
-             :accessor curv-cf)
-   (source :accessor source
-           :initarg :source)
-   (name :initform "Trail spectra")))
+(defun-f switch-plots (src plt mode)
+  (map nil (lambda (p)
+             (when p
+               (with-slots (root) p
+                 (when root
+                   (setf (jscl::oget root "style" "visibility") (if mode "visible" "hidden"))))))
+           (mapcar plt (profiles src))))
+
+(defclass-conf trail-graph (saveable-graph watcher)
+ ((xcaption :initform (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "Vx (km/s)")
+            :accessor xcaption)
+  (ycaption :initform "Phase"
+            :accessor ycaption)
+  (ymin :initform -0.1)
+  (ymax :initform 1.1)
+  (yticks :initform 20
+          :accessor yticks)
+  (show-scales :initform '(:left :top :right :bottom))
+  (curv-cf  :initform 0.1
+            :accessor curv-cf
+            :desc "Scale"
+            :type :number
+            :validator (lambda (v) (> v 0))
+            :onchange (lambda (g)
+                        ; (with-no-updates g
+                        (with-slots (source) g
+                          (map nil (lambda (p) (update-profile-plots p source)) (profiles source))
+                          (redraw g))))
+  (show-observ :initform t
+               :desc "Show observational profiles"
+               :type :checkbox
+               :onchange (lambda (trail)
+                           (with-slots (show-observ source) trail
+                             (switch-plots source #'plot show-observ))))
+  (show-synth :initform t
+               :desc "Show synthetic profiles"
+               :type :checkbox
+               :onchange (lambda (trail)
+                           (with-slots (show-synth source) trail
+                             (switch-plots source #'cur-plot show-synth))))
+  (show-den :initform t
+            :desc "Show denoised profiles"
+            :type :checkbox
+            :onchange (lambda (trail)
+                        (with-slots (show-den source) trail
+                          (switch-plots source #'den-plot show-den))))
+  (source :accessor source
+          :initarg :source)
+  (name :initform "Trail spectra")
+  (no-cf-updates :initform nil)))
+
+(defmethod-f redraw :after ((g trail-graph)))
+
+(defmethod-f render-widget :after ((g trail-graph))
+  (with-slots (root show-synth show-observ show-den source) g
+    (ensure-element root
+      (switch-plots source #'plot show-observ)
+      (switch-plots source #'cur-plot show-synth)
+      (switch-plots source #'den-plot show-den))))
+
 
 (defclass-f trail-profile (profile)
   ((mcl :initform nil)
@@ -41,10 +86,9 @@
         table))))
 
 
-
 (defmethod-f curv-cf ((g trail-graph))
-  (with-slots (curv-cf source) g
-    (when (not curv-cf)
+  (with-slots (curv-cf source no-cf-updates) g
+    (when (and (not curv-cf) (not no-cf-updates))
       (with-accessors ((xmin xmin) (xmax xmax)) g
         (labels ((flt (p)
                    (remove-if (lambda (x)
@@ -94,6 +138,16 @@
         curv-cf
         1)))
 
+(def-local-macro-f with-no-updates (trail &rest code)
+  (let ((res (gensym))
+        (ncf (gensym))
+        (ccf (gensym)))
+    `(with-slots ((,ncf no-cf-updates) (,ccf curv-cf)) ,trail
+       (setf ,ncf t)
+       (let ((,res (progn ,@code)))
+         (setf ,ncf nil)
+         ,res))))
+
 (defmethod-f make-curve ((p trail-plot))
   (let* ((g (parent p))
          (ymin (ymin g))
@@ -104,19 +158,18 @@
               :|vector-effect| "non-scaling-stroke"
               :|fill| "none"
               :|d| ,(apply #'jscl::concat
-                           (cons (format nil "M~A,~A " (caar tbl) (+ ymin (- ymax (cdar tbl))))
-                                 (loop for i in (cdr tbl) collect
-                                   (format nil "L~A,~A " (car i) (+ ymin (- ymax (cdr i)))))))))))
+                           (cons (jscl::concat "M" (jscl::float-to-string (caar tbl)) ","
+                                                   (jscl::float-to-string (+ ymin (- ymax (cdar tbl)))) " ")
+                                 (mapcar (lambda (i)
+                                           (jscl::concat "L" (jscl::float-to-string (car i)) ","
+                                                             (jscl::float-to-string (+ ymin (- ymax (cdr i)))) " "))
+                                         (cdr tbl))))))))
+
 
 
 (defmethod-f add-plot :after ((g trail-graph) (p trail-plot))
-  (with-slots (curv-cf) g
-    (with-slots (phase table) p
-      (let* ((mv (max-v (params g)))
-             (ofs 1))
-        (setf curv-cf nil)
-        (redraw g)))))
+  (with-slots (curv-cf no-cf-updates) g
+    (when (not no-cf-updates)
+      (redraw g))))
 
-(defmethod-f remove-all-plots :after ((g trail-graph))
-  (with-slots (curv-cf) g
-    (setf curv-cf nil)))
+(defmethod-f remove-all-plots :after ((g trail-graph)))
