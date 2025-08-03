@@ -31,6 +31,10 @@
 (defmethod-f initialize-instance :after ((obj watcher) &rest args)
   (add-watcher (params obj) obj))
 
+(defmethod-f mop-object-loaded :after ((obj watcher))
+  (add-watcher (params obj) obj))
+
+
 (defmethod-f update-params ((g psf-graph) (p parameters))
   (remove-all-plots g)
   (add-plot g (make-instance 'func-plot
