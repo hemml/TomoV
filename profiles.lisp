@@ -308,41 +308,60 @@
            (vcf (/ pi max-v)))
       (map nil (lambda (p)
                  (with-slots (phase data denoised-data) p
-                   (let* ((rev-ph (+ phase 0.5))
-                          (profs (sort (copy-seq profiles) #'< :key #'phase))
-                          (profs (append (mapcar #'list (mapcar #'phase profs) profs)
-                                         (mapcar #'list (mapcar #'1+ (mapcar #'phase profs)) profs)))
-                          (p1p2 (loop for (p1 p2) on profs when (and p1 p2 (<= (car p1) rev-ph) (>= (car p2) rev-ph))
-                                   return (list p1 p2))))
-                     (when p1p2
-                       (destructuring-bind ((ph1 p1) (ph2 p2)) p1p2
-                         (let ((dph (- ph2 ph1)))
-                           (when (< dph 0.25)
-                             (let ((fprof (make-array (list nsamp 2)))
-                                   (cf1 (/ (- rev-ph ph1) dph))
-                                   (cf2 (/ (- ph2 rev-ph) dph))
-                                   (f1 (fourier-data p1))
-                                   (f2 (fourier-data p2)))
-                               (loop for i below nsamp do
-                                 (setf (aref fprof (* i 2))      (+ (* cf1 (aref f1 (* i 2)))
-                                                                    (* cf2 (aref f2 (* i 2))))
-                                       (aref fprof (1+ (* i 2))) (+ (* cf1 (aref f1 (1+ (* i 2))))
-                                                                    (* cf2 (aref f2 (1+ (* i 2)))))))
-                               (setf denoised-data
-                                     (loop for x in data collect
-                                       (cons (car x)
-                                             (* 0.5
-                                                (+ (cdr x)
-                                                   (let ((rev (* (/ 1 pi)
-                                                                 (loop for i below nsamp sum
-                                                                   (if (= i 0)
-                                                                       (* 0.5 (aref fprof 0))
-                                                                       (+ (* (aref fprof (* i 2))      (jscos (* (car x) vcf i)))
-                                                                          (* (aref fprof (1+ (* i 2))) (jssin (* (car x) vcf i)))))))))
-                                                     (if (> rev (* 0.5 (cdr x)))
-                                                         rev
-                                                         (cdr x))))))))))))))))
-
+                   (labels ((get-mid-p (p1p2 mid-ph &optional rev)
+                              (when p1p2
+                                (destructuring-bind ((ph1 p1) (ph2 p2)) p1p2
+                                  (let ((dph (- ph2 ph1)))
+                                    (when (< dph 0.25)
+                                      (let ((fprof (make-array (list nsamp 2)))
+                                            (cf1 (/ (- mid-ph ph1) dph))
+                                            (cf2 (/ (- ph2 mid-ph) dph))
+                                            (f1 (fourier-data p1))
+                                            (f2 (fourier-data p2)))
+                                        (loop for i below nsamp do
+                                          (setf (aref fprof (* i 2))      (+ (* cf1 (aref f1 (* i 2)))
+                                                                             (* cf2 (aref f2 (* i 2))))
+                                                (aref fprof (1+ (* i 2))) (+ (* cf1 (aref f1 (1+ (* i 2))))
+                                                                             (* cf2 (aref f2 (1+ (* i 2)))))))
+                                        (loop for x in data collect
+                                          (* (/ 1 pi)
+                                             (loop for i below nsamp sum
+                                               (if (= i 0)
+                                                   (* 0.5 (aref fprof 0))
+                                                   (+ (* (aref fprof (* i 2))
+                                                         (jscos (* (car x) vcf i)))
+                                                      (* (aref fprof (1+ (* i 2)))
+                                                         (jssin (* (car x) vcf i))
+                                                         (if rev -1 1))))))))))))))
+                     (let* ((rev-ph (+ phase 0.5))
+                            (profs (sort (copy-seq profiles) #'< :key #'phase))
+                            (profs (cons (cons (1- (phase (car (last profs)))) (last profs))
+                                         (append (mapcar #'list (mapcar #'phase profs) profs)
+                                                 (mapcar #'list (mapcar #'1+ (mapcar #'phase profs)) profs))))
+                            (rev-p (get-mid-p (loop for (p1 p2) on profs when (and p1 p2 (<= (car p1) rev-ph) (>= (car p2) rev-ph))
+                                                 return (list p1 p2))
+                                              rev-ph))
+                            (sam-p (get-mid-p (when (> level 1)
+                                                (loop for (p1 p2 p3) on profs when (and p1 p2 p3 (eql (cadr p2) p)) do
+                                                    (jslog (car p1) (car p2) (car p3))
+                                                    (return (list p1 p3))))
+                                              phase
+                                              t))
+                            (cf (/ 1 (+ 1 (if rev-p 1 0) (if sam-p 1 0))))
+                            (zdata (loop for p in data collect nil)))
+                          (setf denoised-data
+                                (mapcar (lambda (d r s)
+                                          (let ((dv (cdr d)))
+                                            (labels ((irdv (r)
+                                                       (if r
+                                                           (if (< (abs (/ (- r dv) dv)) 0.5)
+                                                               r
+                                                               dv)
+                                                           0)))
+                                              (cons (car d) (* cf (+ dv (irdv r) (irdv s)))))))
+                                        data
+                                        (if rev-p rev-p zdata)
+                                        (if sam-p sam-p zdata)))))))
                profiles))
     (map nil (lambda (p) (update-profile-plots p s)) profiles)
     (redraw (trail s))))
