@@ -104,7 +104,8 @@
 (defmethod-f remake-profiles ((s real-profile-source))
   (with-no-updates (trail s)
     (map nil #'remake-profile (items (files s))))
-  (redraw (trail s)))
+  (setf (slot-value s 'denoise-level) 0)
+  (redraw s))
 
 (defmethod-f source-loaded ((s real-profile-source)))
 ;;  (slot-makunbound (solver (solver s)) 'absorbtion-profile)

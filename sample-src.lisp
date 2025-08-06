@@ -511,6 +511,7 @@
                                            :|style.width| "10em"
                     :|onclick| (lambda (ev)
                                  (remove-all-profiles s)
+                                 (setf (slot-value s 'denoise-level) 0)
                                  (let* ((n (floor (js-parse-float (jscl::oget inp "value"))))
                                         (d (/ 1.0 n))
                                         (ntasks (jscl::oget (winref "navigator") "hardwareConcurrency"))
@@ -550,7 +551,8 @@
                                                      (mapcar (lambda (p) (add-profile s p)) prof-lst)
                                                      (add-noise s snr (offset s) :profs prof-lst)
                                                      (mapcar (lambda (p) (update-profile-plots p s)) prof-lst)
-                                                     (close pb)))))))))))))))
+                                                     (close pb)
+                                                     (redraw s)))))))))))))))
           :append-element
             (create-element "div" :|style.width| "100%"
                                   :|style.display| "inline-block"

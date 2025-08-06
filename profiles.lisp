@@ -39,7 +39,8 @@
    (chi)
    (max-d)
    (trail)
-   (solver)))
+   (solver)
+   (denoise-level :initform 0)))
 
 (defclass-f profile-source-widget (omg-widget profile-source)
   ((src-root :accessor src-root)
@@ -303,71 +304,107 @@
                                      (+ nzt (/ (max 0 (- pm ofs)) max-d))
                                      1.0))))))))
 
+(defclass-f denoise-progress (modal-dialog-window)
+  ((bar)))
+
+(defmethod-f initialize-instance :after ((p denoise-progress) &rest args)
+  (with-slots (bar) p
+    (setf bar (make-instance 'progress-bar))))
+
+(defmethod-f render-widget :after ((dp denoise-progress))
+  (with-slots (root bar) dp
+    (append-element
+      (create-element "div" :|style.border| "0.1em solid black"
+                            :|style.border-radius| "0.5em"
+                            :|style.padding| "0.5em"
+                            :|style.background| "#fffff0"
+        :append-element (create-element "span" :|style.paddingRight| "1em"
+                                               :|innerHTML| "Denoise:")
+        :append-element (create-element "span" :|style.width| "20em"
+                          :append-element (render-widget bar)))
+      root)))
+
+
 (defmethod-f denoise ((s profile-source) level)
   (with-slots (profiles params) s
+    (map nil (lambda (p)
+               (with-slots (denoised-data) p
+                 (setf denoised-data nil)))
+             profiles)
     (let* ((resolution (resolution params))
            (max-v (max-v params))
            (nsamp (1+ (floor resolution 2)))
-           (vcf (/ pi max-v)))
-      (map nil (lambda (p)
-                 (with-slots (phase data denoised-data) p
-                   (labels ((get-mid-p (p1p2 mid-ph &optional rev)
-                              (when p1p2
-                                (destructuring-bind ((ph1 p1) (ph2 p2)) p1p2
-                                  (let ((dph (- ph2 ph1)))
-                                    (when (< dph 0.25)
-                                      (let ((fprof (make-array (list nsamp 2)))
-                                            (cf1 (/ (- mid-ph ph1) dph))
-                                            (cf2 (/ (- ph2 mid-ph) dph))
-                                            (f1 (fourier-data p1))
-                                            (f2 (fourier-data p2)))
-                                        (loop for i below nsamp do
-                                          (setf (aref fprof (* i 2))      (+ (* cf1 (aref f1 (* i 2)))
-                                                                             (* cf2 (aref f2 (* i 2))))
-                                                (aref fprof (1+ (* i 2))) (+ (* cf1 (aref f1 (1+ (* i 2))))
-                                                                             (* cf2 (aref f2 (1+ (* i 2)))))))
-                                        (loop for x in data collect
-                                          (* (/ 1 pi)
-                                             (loop for i below nsamp sum
-                                               (if (= i 0)
-                                                   (* 0.5 (aref fprof 0))
-                                                   (+ (* (aref fprof (* i 2))
-                                                         (jscos (* (car x) vcf i)))
-                                                      (* (aref fprof (1+ (* i 2)))
-                                                         (jssin (* (car x) vcf i))
-                                                         (if rev -1 1))))))))))))))
-                     (let* ((rev-ph (+ phase 0.5))
-                            (profs (sort (copy-seq profiles) #'< :key #'phase))
-                            (profs (cons (cons (1- (phase (car (last profs)))) (last profs))
-                                         (append (mapcar #'list (mapcar #'phase profs) profs)
-                                                 (mapcar #'list (mapcar #'1+ (mapcar #'phase profs)) profs))))
-                            (rev-p (get-mid-p (loop for (p1 p2) on profs when (and p1 p2 (<= (car p1) rev-ph) (>= (car p2) rev-ph))
-                                                 return (list p1 p2))
-                                              rev-ph))
-                            (sam-p (get-mid-p (when (> level 1)
-                                                (loop for (p1 p2 p3) on profs when (and p1 p2 p3 (eql (cadr p2) p)) do
-                                                    (jslog (car p1) (car p2) (car p3))
-                                                    (return (list p1 p3))))
-                                              phase
-                                              t))
-                            (cf (/ 1 (+ 1 (if rev-p 1 0) (if sam-p 1 0))))
-                            (zdata (loop for p in data collect nil)))
-                          (setf denoised-data
-                                (mapcar (lambda (d r s)
-                                          (let ((dv (cdr d)))
-                                            (labels ((irdv (r)
-                                                       (if r
-                                                           (if (< (abs (/ (- r dv) dv)) 0.5)
-                                                               r
-                                                               dv)
-                                                           0)))
-                                              (cons (car d) (* cf (+ dv (irdv r) (irdv s)))))))
-                                        data
-                                        (if rev-p rev-p zdata)
-                                        (if sam-p sam-p zdata)))))))
-               profiles))
-    (map nil (lambda (p) (update-profile-plots p s)) profiles)
-    (redraw (trail s))))
+           (vcf (/ pi max-v))
+           (pwin (make-instance 'denoise-progress)))
+      (append-element (render-widget pwin))
+      (labels ((step (pl)
+                 (if pl
+                     (destructuring-bind (p perc) (car pl)
+                       (with-slots (bar) pwin
+                         (set-progress bar perc))
+                       (with-slots (phase data denoised-data) p
+                         (labels ((get-mid-p (p1p2 mid-ph &optional rev)
+                                    (when p1p2
+                                      (destructuring-bind ((ph1 p1) (ph2 p2)) p1p2
+                                        (let ((dph (- ph2 ph1)))
+                                          (when (< dph 0.25)
+                                            (let ((fprof (make-array (list nsamp 2)))
+                                                  (cf1 (/ (- mid-ph ph1) dph))
+                                                  (cf2 (/ (- ph2 mid-ph) dph))
+                                                  (f1 (fourier-data p1))
+                                                  (f2 (fourier-data p2)))
+                                              (loop for i below nsamp do
+                                                (setf (aref fprof (* i 2))      (+ (* cf1 (aref f1 (* i 2)))
+                                                                                   (* cf2 (aref f2 (* i 2))))
+                                                      (aref fprof (1+ (* i 2))) (+ (* cf1 (aref f1 (1+ (* i 2))))
+                                                                                   (* cf2 (aref f2 (1+ (* i 2)))))))
+                                              (loop for x in data collect
+                                                (* (/ 1 pi)
+                                                   (loop for i below nsamp sum
+                                                     (if (= i 0)
+                                                         (* 0.5 (aref fprof 0))
+                                                         (+ (* (aref fprof (* i 2))
+                                                               (jscos (* (car x) vcf i)))
+                                                            (* (aref fprof (1+ (* i 2)))
+                                                               (jssin (* (car x) vcf i))
+                                                               (if rev -1 1))))))))))))))
+                           (let* ((rev-ph (+ phase 0.5))
+                                  (profs (sort (copy-seq profiles) #'< :key #'phase))
+                                  (profs (cons (cons (1- (phase (car (last profs)))) (last profs))
+                                               (append (mapcar #'list (mapcar #'phase profs) profs)
+                                                       (mapcar #'list (mapcar #'1+ (mapcar #'phase profs)) profs))))
+                                  (rev-p (get-mid-p (loop for (p1 p2) on profs when (and p1 p2 (<= (car p1) rev-ph) (>= (car p2) rev-ph))
+                                                       return (list p1 p2))
+                                                    rev-ph))
+                                  (sam-p (get-mid-p (when (> level 1)
+                                                      (loop for (p1 p2 p3) on profs when (and p1 p2 p3 (eql (cadr p2) p)) do
+                                                          (return (list p1 p3))))
+                                                    phase
+                                                    t))
+                                  (cf (/ 1 (+ 1 (if rev-p 1 0) (if sam-p 1 0))))
+                                  (zdata (loop for p in data collect nil)))
+                                (setf denoised-data
+                                      (mapcar (lambda (d r s)
+                                                (let ((dv (cdr d)))
+                                                  (labels ((irdv (r)
+                                                             (if r
+                                                                 (if (< (abs (/ (- r dv) dv)) 0.5)
+                                                                     r
+                                                                     dv)
+                                                                 0)))
+                                                    (cons (car d) (* cf (+ dv (irdv r) (irdv s)))))))
+                                              data
+                                              (if rev-p rev-p zdata)
+                                              (if sam-p sam-p zdata))))))
+                       (execute-after 0 (lambda () (step (cdr pl)))))
+                     (execute-after 0
+                       (lambda ()
+                         (close pwin)
+                         (map nil (lambda (p) (update-profile-plots p s)) profiles)
+                         (redraw (trail s)))))))
+        (step (when (> level 0)
+                (let ((lp (length profiles)))
+                  (loop for p in profiles and i below lp collect (list p (/ i lp))))))))))
 
 (defmethod-f reset ((s profile-source))
   (slot-makunbound s 'chi)
@@ -405,16 +442,19 @@
                                                                    (cur-i p show-cur-i)))
                                             :phase phase
                                             :color "blue")))))
-      (when denoised-data
-        (let ((tbl (mapcar (lambda (xy) (cons (car xy) (max 0 (- (cdr xy) offset)))) denoised-data)))
-          (if den-plot
-              (with-slots (table) den-plot
-                (setf table tbl))
-              (add-plot (trail s) (setf den-plot
-                                        (make-instance 'trail-plot
-                                          :table tbl
-                                          :phase phase
-                                          :color "green")))))))))
+      (if denoised-data
+          (let ((tbl (mapcar (lambda (xy) (cons (car xy) (max 0 (- (cdr xy) offset)))) denoised-data)))
+            (if den-plot
+                (with-slots (table) den-plot
+                  (setf table tbl))
+                (add-plot (trail s) (setf den-plot
+                                          (make-instance 'trail-plot
+                                            :table tbl
+                                            :phase phase
+                                            :color "green")))))
+          (when den-plot
+            (remove-plot den-plot)
+            (setf den-plot nil))))))
 
 
 (defmethod-f add-profile ((s profile-source) (p profile))
@@ -614,18 +654,24 @@
                                                                    (redraw (trail s))
                                                                    (redraw-config (trail s)))))
                                   :append-element
-                                    (let* ((denoise-level 1)
-                                           (lev (make-instance 'editable-field :value denoise-level
-                                                  :ok (lambda (val)
-                                                        (let ((v (ignore-errors (parse-integer val))))
-                                                          (when v
-                                                            (setf denoise-level v)))))))
+                                    (with-slots (denoise-level) s
+                                      (jslog "DL:" denoise-level)
                                       (create-element "div" :|style.marginTop| "1em"
-                                        :append-element (create-element "span" :|innerHTML| "Denoise level:"
+                                        :append-element (create-element "span" :|innerHTML| "Denoise:"
                                                                                :|style.marginRight| "1em")
-                                        :append-element (render-widget lev)
-                                        :append-element (create-element "button" :|innerHTML| "denoise"
-                                                                                 :|style.marginLeft| "1em"
-                                                          :|onclick| (lambda (ev)
-                                                                       (denoise s denoise-level)))))))
+                                        :append-element (create-element "select"
+                                                          :append-element (create-element "option" :|innerHTML| "none"
+                                                                                                   :|selected| (equal 0 denoise-level)
+                                                                                                   :|value| 0)
+                                                          :append-element (create-element "option" :|innerHTML| "using opposite profiles"
+                                                                                                   :|selected| (equal 1 denoise-level)
+                                                                                                   :|value| 1)
+                                                          :append-element (create-element "option" :|innerHTML| "using opposite and closest profiles"
+                                                                                                   :|selected| (equal 2 denoise-level)
+                                                                                                   :|value| 2)
+                                                          :|onchange| (lambda (ev)
+                                                                        (let ((l (parse-integer (jscl::oget ev "target" "value"))))
+                                                                          (when (not (equal l denoise-level))
+                                                                            (setf denoise-level l)
+                                                                            (denoise s denoise-level)))))))))
             :append-element (render-widget slv)))))
