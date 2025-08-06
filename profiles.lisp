@@ -72,6 +72,9 @@
 (lazy-slot trail ((s profile-source))
   (make-instance 'trail-graph :params (params s) :source s))
 
+(defmethod-f soft-reset ((p profile))
+  (slot-makunbound p 'cur-i))
+
 (defmethod-f reset ((p profile))
   (slot-makunbound p 'cur-i)
   (slot-makunbound p 'max-d)
@@ -369,6 +372,11 @@
 (defmethod-f reset ((s profile-source))
   (slot-makunbound s 'chi)
   (map nil #'reset (profiles s)))
+
+(defmethod-f soft-reset ((s profile-source))
+  (slot-makunbound s 'chi)
+  (map nil #'soft-reset (profiles s)))
+
 
 (defmethod-f update-profile-plots ((p profile) (s profile-source) &key show-cur-i)
   (let ((offset (offset p)))
