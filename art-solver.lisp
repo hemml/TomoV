@@ -12,8 +12,7 @@
    (emm-delta)
    (wrk :accessor wrk)
    (solver-chi)
-   (noize-treshold)
-   (lsnr-degree)
+   (noize-treshold :initform 0.97)
    (low-snr :initform nil
             :accessor low-snr)
    (fit-abs :initform nil)
@@ -29,9 +28,6 @@
         :accessor img)
    (ctrls :initarg :ctrls
           :accessor ctrls)))
-
-(lazy-slot lsnr-degree ((s art-solver))
-  3.0)
 
 (lazy-slot iteration-limit ((s art-solver))
   0)
@@ -61,7 +57,7 @@
 (defparameter-f *current-solver* nil)
 
 (lazy-slot noize-treshold ((s art-solver))
-  0)
+  0.97)
 
 (lazy-slot solver-chi ((s art-solver))
   (chi (source s) s))
@@ -96,7 +92,8 @@
            (ny (array-dimension m 1))
            (m1 (make-array (list nx ny)))
            (profs (profiles (source s)))
-           (grad (make-array (list (* nx ny)) :initial-element 0))
+           (grad)
+           (grad-copy)
            (delta (delta s))
            (step 1e-3)
            (dbg (funcall bar-cb 0.05))
@@ -107,56 +104,58 @@
            (max-d (max-d (source s)))
            (dbg (funcall bar-cb 0.07))
            (lsnr (low-snr s))
-           (lsnrd (lsnr-degree s))
            (nzt (noize-treshold s))
            (ofs (offset (source s)))
-           (all-data (mapcar (lambda (w d c m pw ads)
+           (all-data (mapcar (lambda (w d c pw ads npr)
                                (list w
                                      (- d c)
-                                     (* pw (if lsnr
-                                               (+ nzt (expt (/ (max 0 (- m ofs)) max-d) lsnrd))
-                                               1.0))
-                                     ads))
+                                     pw
+                                     ads
+                                     npr))
                              (apply #'concatenate (cons 'list prof-weights))
                              (apply #'concatenate (cons 'list prof-dats))
                              (apply #'concatenate (cons 'list prof-cur-i))
-                             (apply #'concatenate
-                                    (cons 'list
-                                          (mapcar (lambda (p)
-                                                    (prof-mean p (source s)))
-                                                  profs)))
                              (loop for p in profs append
                                (mapcar (constantly (phase-weight p)) (get-data p)))
                              (loop for p in profs append
-                               (ads-profile p s))))
+                               (ads-profile p s))
+                             (loop for p in profs and i below (length profs) append
+                               (mapcar (constantly i) (get-data p)))))
            (progress-cnt 0)
            (grad-cnt 0)
-           (adl (length all-data)))
-      (funcall bar-cb 0.1)
-      (loop for ad in all-data sum
-        (destructuring-bind (w dc pw ads) ad
-          (incf grad-cnt)
-          (if (> (incf progress-cnt) 100)
-              (let ((tim1 ((jscl::oget (jscl::make-new (winref "Date")) "getTime"))))
-                (setf progress-cnt 0)
-                (if (> (- tim1 tim0) 200)
-                    (progn
-                      (setf tim0 tim1)
-                      (funcall bar-cb (+ 0.1 (* 0.7 (/ grad-cnt adl))))))))
-          (loop for i below (length w) by 2 sum
-            (let* ((wl (* (car ads) (aref w (+ i 1)) step))
-                   (nv (* pw (- (sqr wl) (* 2 wl dc)))))
-              (setf (aref grad (aref w i))
-                    (+ (aref grad (aref w i)) nv))
-              nv))))
+           (adl (length all-data))
+           (nprofs (length profs)))
+      ;;(loop while)
+      (progn
+        ; (jslog "STEP")
+        (funcall bar-cb 0.1)
+        (setf grad (make-array (list (* nx ny)) :initial-element 0)
+              grad-cnt 0)
+        (loop for ad in all-data sum
+          (destructuring-bind (w dc pw ads npr) ad
+            (incf grad-cnt)
+            (if (> (incf progress-cnt) 100)
+                (let ((tim1 ((jscl::oget (jscl::make-new (winref "Date")) "getTime"))))
+                  (setf progress-cnt 0)
+                  (if (> (- tim1 tim0) 200)
+                      (progn
+                        (setf tim0 tim1)
+                        (funcall bar-cb (+ 0.1 (* 0.7 (/ grad-cnt adl))))))))
+            (loop for i below (length w) by 2 sum
+              (let* ((wl (* (car ads) (aref w (+ i 1)) step))
+                     (nv (* pw (- (sqr wl) (* 2 wl dc))))
+                     (idx (aref w i)))
+                (setf (aref grad idx)
+                      (+ (aref grad idx) nv))
+                nv)))))
+
       (let ((grad-l (/ 1.0 (sqrt (loop for i below (* nx ny) sum (expt (aref grad i) 2)))))
             (cnt 0))
         (funcall bar-cb 0.75)
         (labels ((apply-grad ()
                    (loop for i below (* nx ny) do
-                     (multiple-value-bind (j1 i1) (floor i nx)
-                       (setf (aref m1 i)
-                             (max 0 (- (aref m i) (* step delta (* grad-l (aref grad i))))))))
+                     (setf (aref m1 i)
+                           (max 0 (- (aref m i) (* step delta (* grad-l (aref grad i)))))))
                    (soft-reset (source s))
                    (setf (slot-value s 'matrix) m1)))
           (apply-grad)
@@ -165,9 +164,18 @@
               (setf (slot-value s 'matrix) m)
               (setf delta (* 0.5 delta))
               (apply-grad)))
+
+          (when lsnr
+            (with-slots (matrix) s
+              (let ((max (* nzt (loop for v across matrix maximize v))))
+                (loop for i below (* nx ny) when (>= (aref matrix i) max) do
+                  (setf (aref matrix i) (* nzt max))))))
+
+
           (when (> (chi (source s) s) chi)
             (setf (slot-value s 'matrix) m)
             (soft-reset (source s)))
+
           (funcall bar-cb 0.8)
           (when (or (fit-abs s) (fit-emm s))
             (let* ((adsp (absorbtion-profile s))
@@ -177,24 +185,21 @@
                    (prof-cur-i (apply #'concatenate (cons 'list (mapcar (lambda (p) (cur-i p s)) profs))))
                    (prof-vals (apply #'concatenate (cons 'list prof-dats)))
                    (prof-adsc (apply #'concatenate (cons 'list (mapcar (lambda (p) (ads-cache p s)) profs))))
-                   (prof-means (apply #'concatenate (cons 'list (mapcar (lambda (p) (prof-mean p (source s))) profs))))
                    (ph-weights (loop for p in profs append (mapcar (constantly (phase-weight p)) (get-data p))))
                    (f-a (fit-abs s))
                    (f-e (fit-emm s)))
-              (loop for ci in prof-cur-i and cp in prof-vals and cc in prof-adsc and pm in prof-means and phw in ph-weights do
+              (loop for ci in prof-cur-i and cp in prof-vals and cc in prof-adsc and phw in ph-weights do
                 (destructuring-bind (vv ads emm) (aref adsp cc)
                   (if f-a
                       (setf (aref grad cc)
                             (+ (aref grad cc)
                                (* phw
-                                  (if lsnr (+ nzt (expt (/ (max 0 pm) max-d) lsnrd)) 1.0)
                                   (- (sqr (- cp (+ emm (* (- ci emm) (/ (+ ads step) ads)))))
                                      (sqr (- cp ci)))))))
                   (if f-e
                       (setf (aref grad-i cc)
                             (+ (aref grad-i cc)
                                (* phw
-                                  (if lsnr (+ nzt (expt (/ (max 0 pm) max-d) lsnrd)) 1.0)
                                   (- (sqr (- cp (+ ci delta)))
                                      (sqr (- cp ci)))))))))
               (funcall bar-cb 0.9)
@@ -597,17 +602,6 @@
                                                        (let ((v (js-parse-float val)))
                                                          (when (and v (not (is-nan val)))
                                                            (setf (slot-value (solver s) 'noize-treshold) v)
-                                                           v))))))
-                            (create-element "div" :|style.marginTop| "0.5em"
-                              :append-element
-                                (create-element "span" :|style.marginRight| "1em"
-                                                       :|innerHTML| "Low-SNR degree:")
-                              :append-element
-                                (render-widget (make-instance 'editable-field :value (lsnr-degree (solver s))
-                                                 :ok (lambda (val)
-                                                       (let ((v (js-parse-float val)))
-                                                         (when (and v (not (is-nan val)))
-                                                           (setf (slot-value (solver s) 'lsnr-degree) v)
                                                            v))))))
                             (create-element "div" :|style.marginTop| "0.5em"
                               :append-element

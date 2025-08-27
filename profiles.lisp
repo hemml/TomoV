@@ -293,16 +293,12 @@
 
 (lazy-slot chi ((s profile-source) (slv art-solver))
   (let ((max-d (max-d s))
-        (lsnr (low-snr slv))
         (nzt (noize-treshold slv))
         (ofs (offset s)))
     (loop for p in (profiles s) sum
       (with-slots (data denoised-data) p
         (* (phase-weight p) (loop for i in (mapcar #'cdr (if denoised-data denoised-data data)) and ci in (cur-i p slv) and pm in (prof-mean p s) sum
-                              (* (sqr (- i ci))
-                                 (if lsnr
-                                     (+ nzt (/ (max 0 (- pm ofs)) max-d))
-                                     1.0))))))))
+                              (sqr (- i ci))))))))
 
 (defclass-f denoise-progress (modal-dialog-window)
   ((bar)))
