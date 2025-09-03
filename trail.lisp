@@ -9,7 +9,7 @@
            (mapcar plt (profiles src))))
 
 (defclass-conf trail-graph (saveable-graph watcher)
- ((xcaption :initform (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "Vx (km/s)")
+ ((xcaption :initform (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")
             :accessor xcaption)
   (ycaption :initform "Phase"
             :accessor ycaption)
