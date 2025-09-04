@@ -67,11 +67,11 @@
                                                                           (let ((v (js-parse-float val)))
                                                                             (when (and v
                                                                                        (not (is-nan v))
-                                                                                       ,@(if validator `((funcall ,validator v
-                                                                                                                       (setf (slot-value obj ',(car s)) v)
-                                                                                                                       ,(when onchange
-                                                                                                                          `(execute-after 0 (lambda () (funcall ,onchange obj))))
-                                                                                                                       val))))))))))
+                                                                                       ,@(if validator `((funcall ,validator v))))
+                                                                              (setf (slot-value obj ',(car s)) v)
+                                                                              ,(when onchange
+                                                                                  `(execute-after 0 (lambda () (funcall ,onchange obj))))
+                                                                              val))))))
                                          (:string `(render-widget (make-instance 'nulable-fld :value (slot-value obj ',(car s))
                                                                     :ok (lambda (val)
                                                                            (block nil
