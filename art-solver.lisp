@@ -22,9 +22,9 @@
    (fit-abs :initform nil
             :desc "Fit absorbtion"
             :type :checkbox)
-   ; (fit-emm :initform nil
-   ;          :desc "Fit extra emission"
-   ;          :type :checkbox)
+   (fit-emm :initform nil)
+            ; :desc "Fit extra emission"
+            ; :type :checkbox)
    (gauss-abs-cfs) ;; (center amplitude fwhm)
    (gauss-abs :initform nil
               :desc "Gaussian absorbtion"
@@ -318,7 +318,7 @@
                                            (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref safe-adsp i)))
                                            (soft-reset (source s)))
                                          (setf (slot-value s ',del) adelta)))))))
-                      (format t "GG: ~A ~A" gcfs grad-g)
+                      ;;(format t "GG: ~A ~A" gcfs grad-g)
                       (if f-a
                           (if gauss-abs
                               (mk-ae-step grad-g cadr ads-delta 1e-3 1.0 1.0 t)
