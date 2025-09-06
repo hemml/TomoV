@@ -88,21 +88,6 @@
       (remove-plot cur-plot))
     (setf cur-plot nil)))
 
-; (lazy-slot ads-cache ((p profile) (s art-solver))
-;   (let* ((adsp (absorbtion-profile s))
-;          (vl (map 'vector #'car adsp))
-;          (lst (1- (length adsp)))
-;          (av-min (car (aref adsp 0)))
-;          (av-max (car (aref adsp lst))))
-;     (loop for v in (mapcar #'car (data p)) collect
-;       (let* ((i1 (cond ((< v av-min) 0)
-;                        ((> v av-max) lst)
-;                        (t (max 0 (1- (position-if (lambda (x) (>= x v)) vl))))))
-;              (i2 (cond ((< v av-min) 0)
-;                        ((> v av-max) lst)
-;                        (t (min lst (1+ i1))))))
-;         (list i1 i2 (if (= i1 i2) 0 (/ (- v (aref vl i1)) (- (aref vl i2) (aref vl i1)))))))))
-
 (lazy-slot ads-cache ((p profile) (s art-solver))
   (let* ((adsp (absorbtion-profile s))
          (vl (map 'vector #'car adsp))
