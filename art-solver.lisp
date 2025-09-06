@@ -1,6 +1,6 @@
 (in-package :tomo)
 
-(defclass-f art-solver (watcher)
+(defclass-conf art-solver (watcher)
   ((source :initarg :source
            :accessor source)
    (matrix :accessor matrix)
@@ -12,13 +12,27 @@
    (emm-delta)
    (wrk :accessor wrk)
    (solver-chi)
-   (noize-treshold :initform 0.97)
+   (noize-treshold :initform 0.97
+                   :desc "Noize theshold"
+                   :type :number)
    (low-snr :initform nil
-            :accessor low-snr)
-   (fit-abs :initform nil)
-   (fit-emm :initform nil)
+            :accessor low-snr
+            :desc "Low SNR mode"
+            :type :checkbox)
+   (fit-abs :initform nil
+            :desc "Fit absorbtion"
+            :type :checkbox)
+   ; (fit-emm :initform nil
+   ;          :desc "Fit extra emission"
+   ;          :type :checkbox)
+   (gauss-abs-cfs) ;; (center amplitude fwhm)
+   (gauss-abs :initform nil
+              :desc "Gaussian absorbtion"
+              :type :checkbox)
    (absorbtion-profile)
-   (iteration-limit)))
+   (iteration-limit :initform 0
+                    :desc "Iteration limit"
+                    :type :number)))
 
 (defclass-f solver-widget (omg-widget watcher)
   ((solver :accessor solver)))
@@ -54,6 +68,9 @@
                                0.0)))
     arr))
 
+(lazy-slot gauss-abs-cfs ((s art-solver))
+  (list 0 0 1.0)) ;;(max-v (params s)))
+
 (defparameter-f *current-solver* nil)
 
 (lazy-slot noize-treshold ((s art-solver))
@@ -74,6 +91,7 @@
     (loop for i below (apply #'* (array-dimensions m)) do
       (setf (aref m i) 0))) ;;(offset (source s)))))
   (slot-makunbound s 'absorbtion-profile)
+  (slot-makunbound s 'gauss-abs-cfs)
   (reset (source s)))
 
 (lazy-slot matrix ((s art-solver))
@@ -98,6 +116,7 @@
            (step 1e-3)
            (dbg (funcall bar-cb 0.05))
            (prof-dats (mapcar (lambda (p) (mapcar #'cdr (get-data p))) profs))
+           (prof-vs   (mapcar (lambda (p) (mapcar #'car (get-data p))) profs))
            (prof-cur-i (mapcar (lambda (p) (cur-i p s)) profs))
            (prof-weights (mapcar #'weights profs))
            (chi (chi (source s) s))
@@ -125,9 +144,7 @@
            (grad-cnt 0)
            (adl (length all-data))
            (nprofs (length profs)))
-      ;;(loop while)
       (progn
-        ; (jslog "STEP")
         (funcall bar-cb 0.1)
         (setf grad (make-array (list (* nx ny)) :initial-element 0)
               grad-cnt 0)
@@ -148,7 +165,6 @@
                 (setf (aref grad idx)
                       (+ (aref grad idx) nv))
                 nv)))))
-
       (let ((grad-l (/ 1.0 (sqrt (loop for i below (* nx ny) sum (expt (aref grad i) 2)))))
             (cnt 0))
         (funcall bar-cb 0.75)
@@ -164,91 +180,151 @@
               (setf (slot-value s 'matrix) m)
               (setf delta (* 0.5 delta))
               (apply-grad)))
-
           (when lsnr
             (with-slots (matrix) s
-              (let ((max (* nzt (loop for v across matrix maximize v))))
+              (let ((max (* nzt (loop for v across matrix maximize v)))
+                    (cnt 0))
                 (loop for i below (* nx ny) when (>= (aref matrix i) max) do
-                  (setf (aref matrix i) (* nzt max))))))
-
-
+                  (setf (aref matrix i) (* nzt max))
+                  (incf cnt))
+                (jslog "CUT:" cnt))))
           (when (> (chi (source s) s) chi)
             (setf (slot-value s 'matrix) m)
             (soft-reset (source s)))
 
           (funcall bar-cb 0.8)
           (when (or (fit-abs s) (fit-emm s))
-            (let* ((adsp (absorbtion-profile s))
-                   (ldsp (length adsp))
-                   (grad (make-array (list ldsp) :initial-element 0))
-                   (grad-i (make-array (list ldsp) :initial-element 0))
-                   (prof-cur-i (apply #'concatenate (cons 'list (mapcar (lambda (p) (cur-i p s)) profs))))
-                   (prof-vals (apply #'concatenate (cons 'list prof-dats)))
-                   (prof-adsc (apply #'concatenate (cons 'list (mapcar (lambda (p) (ads-cache p s)) profs))))
-                   (ph-weights (loop for p in profs append (mapcar (constantly (phase-weight p)) (get-data p))))
-                   (f-a (fit-abs s))
-                   (f-e (fit-emm s)))
-              (loop for ci in prof-cur-i and cp in prof-vals and cc in prof-adsc and phw in ph-weights do
-                (destructuring-bind (vv ads emm) (aref adsp cc)
-                  (if f-a
-                      (setf (aref grad cc)
-                            (+ (aref grad cc)
-                               (* phw
-                                  (- (sqr (- cp (+ emm (* (- ci emm) (/ (+ ads step) ads)))))
-                                     (sqr (- cp ci)))))))
-                  (if f-e
-                      (setf (aref grad-i cc)
-                            (+ (aref grad-i cc)
-                               (* phw
-                                  (- (sqr (- cp (+ ci delta)))
-                                     (sqr (- cp ci)))))))))
-              (funcall bar-cb 0.9)
-              ; (format t "GRAD: ~A" grad)
-              ; (format t "GRAD-I: ~A" grad-i)
-              ; (format t "ADSP: ~A" adsp)
-              (macrolet ((mk-ae-step (grad fn del dmin dmax ddef)
-                          `(let* ((grad-l (/ 1.0 (sqrt (loop for x across ,grad sum (sqr x)))))
-                                  (adelta (max 1.e-5 (,del s)))
-                                  (c0 chi)
-                                  (old-adsp (map 'vector #',fn adsp))
-                                  (safe-adsp (copy-seq old-adsp))
-                                  (smooth-cf 0.33))
-                             (labels ((apply-grad ()
-                                        (loop for i below ldsp do
-                                          (setf (,fn (aref adsp i))
-                                                (max ,dmin (min ,dmax (- (,fn (aref adsp i)) (* adelta step grad-l (aref ,grad i)))))))
-                                        ; (format t "ADSP: ~A" adsp)
-                                        (soft-reset (source s))))
-                               (apply-grad)
-                               (loop while (and (> (chi (source s) s) c0) (> adelta 1e-5)) do
-                                 (progn
-                                   (setf adelta (* adelta 0.5))
-                                   (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref old-adsp i)))
-                                   (apply-grad)))
-                               (if (< (chi (source s) s) c0)
-                                   (progn
-                                     (loop while (< (- (chi (source s) s) c0) -1e-8) do
-                                       (progn
-                                         (jslog "CHI:" (chi (source s) s) c0 adelta (- (chi (source s) s) c0))
-                                         (setf adelta (* adelta 1.5))
-                                         (setf c0 (chi (source s) s))
-                                         (setf old-adsp (map 'vector #',fn adsp))
-                                         (apply-grad)))
-                                     (when (< delta 1.0)
-                                       (setf delta 1.1))))
-                               (loop for i below ldsp do
-                                 (setf (,fn (aref adsp i))
-                                       (+ (* smooth-cf (if (> i 0) (aref old-adsp (1- i)) ,ddef))
-                                          (* (- 1 (* 2 smooth-cf)) (aref old-adsp i))
-                                          (* smooth-cf (if (< i (1- ldsp)) (aref old-adsp (1+ i)) ,ddef)))))
-                               (soft-reset (source s))
-                               (when (> (chi (source s) s) c0)
-                                 (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref safe-adsp i)))
-                                 (soft-reset (source s)))
-                               (setf (slot-value s ',del) adelta)))))
-                (if f-a (mk-ae-step grad cadr ads-delta 1e-3 1.0 1.0))
-                (if f-e (mk-ae-step grad-i caddr emm-delta 0 max-d 0.0))
-                (funcall bar-cb 0.95))))
+            (with-slots (gauss-abs) s
+              (let* ((adsp (absorbtion-profile s))
+                     (gcfs (gauss-abs-cfs s))
+                     (ldsp (length adsp))
+                     (grad (make-array (list ldsp) :initial-element 0))
+                     (grad-i (make-array (list ldsp) :initial-element 0))
+                     (grad-g (make-array '(3) :initial-element 0))
+                     (prof-cur-i (apply #'concatenate (cons 'list (mapcar (lambda (p) (cur-i p s)) profs))))
+                     (prof-vals (apply #'concatenate (cons 'list prof-dats)))
+                     (prof-v (apply #'concatenate (cons 'list prof-vs)))
+                     (prof-adsc (apply #'concatenate (cons 'list (mapcar (lambda (p) (ads-cache p s)) profs))))
+                     (ph-weights (loop for p in profs append (mapcar (constantly (phase-weight p)) (get-data p))))
+                     (f-a (fit-abs s))
+                     (f-e (fit-emm s))
+                     (maxv1 (/ 1 (max-v (params s)))))
+                (destructuring-bind (amp mid gdisp) gcfs
+                  (labels ((mkgs (x s1 s2 s3)
+                             (- 1.0
+                                (max 0.0
+                                     (min 1.0
+                                          (* (+ amp s1)
+                                             (exp (* -1 (+ gdisp s2) (sqr (- (* maxv1 x) (+ mid s3)))))))))))
+                    (loop for ci in prof-cur-i and cp in prof-vals and cc in prof-adsc and phw in ph-weights and v in prof-v do
+                      (destructuring-bind (vv ads emm) (aref adsp cc)
+                        (when f-a
+                          (if gauss-abs
+                              (setf (aref grad-g 0) (+ (aref grad-g 0)
+                                                       (* phw
+                                                          (- (sqr (- cp (+ emm (* (- ci emm) (/ (mkgs v step 0 0) ads)))))
+                                                             (sqr (- cp ci)))))
+                                    (aref grad-g 1) (+ (aref grad-g 1)
+                                                       (* phw
+                                                          (- (sqr (- cp (+ emm (* (- ci emm) (/ (mkgs v 0 step 0) ads)))))
+                                                             (sqr (- cp ci)))))
+                                    (aref grad-g 2) (+ (aref grad-g 2)
+                                                       (* phw
+                                                          (- (sqr (- cp (+ emm (* (- ci emm) (/ (mkgs v 0 0 step) ads)))))
+                                                             (sqr (- cp ci))))))
+                              (setf (aref grad cc)
+                                    (+ (aref grad cc)
+                                       (* phw
+                                          (- (sqr (- cp (+ emm (* (- ci emm) (/ (+ ads step) ads)))))
+                                             (sqr (- cp ci))))))))
+                        (when f-e
+                            (setf (aref grad-i cc)
+                                  (+ (aref grad-i cc)
+                                     (* phw
+                                        (- (sqr (- cp (+ ci step)))
+                                           (sqr (- cp ci)))))))))
+                    (funcall bar-cb 0.9)
+                    (macrolet ((mk-ae-step (grad fn del dmin dmax ddef gauss)
+                                `(let ((grad-l (sqrt (loop for x across ,grad sum (sqr x)))))
+                                   (when (> grad-l 0)
+                                     (let* ((grad-l (/ 1.0 grad-l))
+                                            (adelta (max 1.e-5 (,del s)))
+                                            (c0 chi)
+                                            (old-adsp (map 'vector #',fn adsp))
+                                            (safe-adsp (copy-seq old-adsp))
+                                            (smooth-cf 0.33)
+                                            (smooth-len 2))
+                                       (labels ((apply-grad ()
+                                                  (loop for i below ldsp do
+                                                    (setf (,fn (aref adsp i))
+                                                          (if ,gauss
+                                                              (mkgs (car (aref adsp i))
+                                                                    (* -1 adelta step grad-l (aref ,grad 0))
+                                                                    (* -1 adelta step grad-l (aref ,grad 1))
+                                                                    (* -1 adelta step grad-l (aref ,grad 2)))
+                                                              (max ,dmin (min ,dmax (- (,fn (aref adsp i))
+                                                                                       (* adelta step grad-l (aref ,grad i))))))))
+                                                  ; (format t "ADSP: ~A" adsp)
+                                                  (soft-reset (source s))))
+                                         (apply-grad)
+                                         ; (format t "GRAD: ~A" ,grad)
+                                         ; (format t "ADS: ~A" adsp)
+                                         (loop while (and (> (chi (source s) s) c0) (> adelta 1e-5)) do
+                                           (progn
+                                             (setf adelta (* adelta 0.5))
+                                             (jslog "DELTA:" adelta)
+                                             (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref old-adsp i)))
+                                             (apply-grad)
+                                             (soft-reset (source s))))
+                                         (if (< (chi (source s) s) c0)
+                                             (progn
+                                               (loop while (< (- (chi (source s) s) c0) -1e-8) do
+                                                 (progn
+                                                   (jslog "CHI:" (chi (source s) s) c0 adelta (- (chi (source s) s) c0))
+                                                   (setf adelta (* adelta 1.5))
+                                                   (setf c0 (chi (source s) s))
+                                                   (setf old-adsp (map 'vector #',fn adsp))
+                                                   (apply-grad)))
+                                               (when (< delta 1.0)
+                                                 (setf delta 1.1)))
+                                             (jslog "CHI1:" (chi (source s) s) c0 adelta (- (chi (source s) s) c0)))
+                                         ; (loop for i below ldsp do
+                                         ;   (setf (,fn (aref adsp i))
+                                         ;         (+ (* smooth-cf (if (> i 0) (aref old-adsp (1- i)) ,ddef))
+                                         ;            (* (- 1 (* 2 smooth-cf)) (aref old-adsp i))
+                                         ;            (* smooth-cf (if (< i (1- ldsp)) (aref old-adsp (1+ i)) ,ddef)))))
+                                         ; (format t "GCFS1: ~A" (gauss-abs-cfs s))
+                                         (if ,gauss
+                                             (progn
+                                               (when (> adelta 1e-5)
+                                                 (jslog "SET!!!")
+                                                 (setf (car gcfs)   (+ (car gcfs)   (* -1 adelta step grad-l (aref ,grad 0)))
+                                                       (cadr gcfs)  (+ (cadr gcfs)  (* -1 adelta step grad-l (aref ,grad 1)))
+                                                       (caddr gcfs) (+ (caddr gcfs) (* -1 adelta step grad-l (aref ,grad 2)))))
+                                               (loop for i below ldsp do
+                                                 (setf (,fn (aref adsp i))
+                                                       (aref old-adsp i))))
+                                             (loop for i below ldsp do
+                                               (setf (,fn (aref adsp i))
+                                                     (/ (loop for j from (- i smooth-len) to (+ i smooth-len) sum
+                                                          (if (and (>= j 0)
+                                                                   (< j ldsp))
+                                                              (aref old-adsp j)
+                                                              ,ddef))
+                                                        (1+ (* 2 smooth-len))))))
+                                         ; (format t "GCFS2: ~A" (gauss-abs-cfs s))
+                                         (soft-reset (source s))
+                                         (when (> (chi (source s) s) c0)
+                                           (loop for i below ldsp do (setf (,fn (aref adsp i)) (aref safe-adsp i)))
+                                           (soft-reset (source s)))
+                                         (setf (slot-value s ',del) adelta)))))))
+                      (format t "GG: ~A ~A" gcfs grad-g)
+                      (if f-a
+                          (if gauss-abs
+                              (mk-ae-step grad-g cadr ads-delta 1e-3 1.0 1.0 t)
+                              (mk-ae-step grad cadr ads-delta 1e-3 1.0 1.0 nil)))
+                      (if f-e (mk-ae-step grad-i caddr emm-delta 0 max-d 0.0 nil))
+                      (funcall bar-cb 0.95)))))))
 
           (if (> delta 1.0) (setf delta (* 1.1 delta)))
           (setf (slot-value s 'delta) delta)
@@ -256,13 +332,14 @@
                   (chi (source s) s)
                   delta
                   (loop for p in profs collect (cur-i p s))
-                  (absorbtion-profile s)))))))
+                  (absorbtion-profile s)
+                  (gauss-abs-cfs s)))))))
 
 
 (defmethod-f perform-step ((s art-solver) bar-cb cb)
   (register-main-lambda bar-cb)
   (funcall bar-cb 0.01)
-  (bind-exit-values-for (stp m chi delta iis adp adelta idelta)
+  (bind-exit-values-for (stp m chi delta iis adp adelta idelta gcfs)
     (run-in-web-worker (wrk s)
       (cache-vars t)
       (let ((tim0 ((jscl::oget (jscl::make-new (winref "Date")) "getTime")))
@@ -284,8 +361,8 @@
             (incf delta-sum (delta s))
             (incf adelta-sum (ads-delta s))
             (incf idelta-sum (emm-delta s))))
-        (destructuring-bind (m chi delta cur-i adsp) res
-          (values (cur-step s) m chi (/ delta-sum n) cur-i adsp (/ adelta-sum n) (/ idelta-sum n)))))
+        (destructuring-bind (m chi delta cur-i adsp gcfs) res
+          (values (cur-step s) m chi (/ delta-sum n) cur-i adsp (/ adelta-sum n) (/ idelta-sum n) gcfs))))
     (progn
       (funcall bar-cb 1)
       (let ((m0 (matrix s)))
@@ -296,6 +373,7 @@
       (setf (slot-value s 'absorbtion-profile) adp)
       (setf (slot-value s 'ads-delta) adelta)
       (setf (slot-value s 'emm-delta) idelta)
+      (setf (slot-value s 'gauss-abs-cfs) gcfs)
       (loop for p in (profiles (source s)) and i in iis do (setf (slot-value p 'cur-i) i))
       (funcall cb))))
 
@@ -556,26 +634,9 @@
                                           :|style.marginTop| "1em"
                       :append-element (render-widget pgb))
                   :append-element (render-widget inf)
+                  :append-elements (render-config (solver s))
                   :append-elements
-                    (labels ((make-check (name slot)
-                               (create-element "div"
-                                 :append-element
-                                   (create-element "label"
-                                     :append-element (create-element "span" :|style.marginRight| "1em"
-                                                                            :|style.textDecorationStyle| "dashed"
-                                                                            :|style.textDecorationLine| "underline"
-                                                                            :|style.textDecorationThicknes| "1.75pt"
-                                                                            :|style.color| "blue"
-                                                                            :|innerHTML| name)
-                                     :append-element
-                                       (with-self box
-                                         (create-element "input" :|type| "checkbox"
-                                                                 :|checked| (slot-value (solver s) slot)
-                                           :|onclick| (lambda (ev)
-                                                        (let ((st (jscl::oget box "checked")))
-                                                          (setf (slot-value (solver s) slot) st)
-                                                          t)))))))
-                             (remake-all (&key no-blue)
+                    (labels ((remake-all (&key no-blue)
                                (reset (source (solver s)))
                                (multiple-value-bind (ads-data emm-data sum-data ads-min emm-max) (get-adsp-data)
                                  (setf (slot-value ads-plt 'table) ads-data)
@@ -589,32 +650,7 @@
                                (redraw (trail (source (solver s))))
                                (redraw inf)
                                (redraw plt)))
-                      (list (make-check "Low SNR mode:" 'low-snr)
-                            (make-check "Fit absorbtion:" 'fit-abs)
-                            (make-check "Fit extra emission:" 'fit-emm)
-                            (create-element "div" :|style.marginTop| "0.5em"
-                              :append-element
-                                (create-element "span" :|style.marginRight| "1em"
-                                                       :|innerHTML| "Noize theshold:")
-                              :append-element
-                                (render-widget (make-instance 'editable-field :value (noize-treshold (solver s))
-                                                 :ok (lambda (val)
-                                                       (let ((v (js-parse-float val)))
-                                                         (when (and v (not (is-nan val)))
-                                                           (setf (slot-value (solver s) 'noize-treshold) v)
-                                                           v))))))
-                            (create-element "div" :|style.marginTop| "0.5em"
-                              :append-element
-                                (create-element "span" :|style.marginRight| "1em"
-                                                       :|innerHTML| "Iteration limit:")
-                              :append-element
-                                (render-widget (make-instance 'editable-field :value (iteration-limit (solver s))
-                                                 :ok (lambda (val)
-                                                       (let ((v (js-parse-float val)))
-                                                         (when (and v (not (is-nan val)))
-                                                           (setf (slot-value (solver s) 'iteration-limit) v)
-                                                           v))))))
-                            (create-element "button" :|style.width| "80%"
+                      (list (create-element "button" :|style.width| "80%"
                                                      :|style.marginTop| "1em"
                                                      :|innerHTML| "Reset absorbtion"
                               :|onclick| (lambda (ev)
