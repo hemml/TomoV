@@ -174,14 +174,15 @@
       (let ((dat (loop for p in body when (and (>= (car p) (- max-v))
                                                (<= (car p) max-v))
                    collect p)))
-        (if (slot-boundp fi 'profile)
-            (with-slots (profile) fi
-              (setf (slot-value profile 'data) dat
-                    (slot-value profile 'phase) phase)
-              (update-profile-plots profile (source parent)))
-            (add-profile (source parent)
-              (setf (slot-value fi 'profile)
-                    (make-instance 'profile :phase phase :data dat :params (params (source parent))))))))))
+        (let ((phase (if phase (- phase (floor phase)))))
+          (if (slot-boundp fi 'profile)
+              (with-slots (profile) fi
+                (setf (slot-value profile 'data) dat
+                      (slot-value profile 'phase) phase)
+                (update-profile-plots profile (source parent)))
+              (add-profile (source parent)
+                (setf (slot-value fi 'profile)
+                      (make-instance 'profile :phase phase :data dat :params (params (source parent)))))))))))
 
 
 (defmethod-f render-widget ((fi file-selector-item))
