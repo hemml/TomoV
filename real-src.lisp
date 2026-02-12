@@ -24,7 +24,6 @@
                   :desc "Primary closest on phase 0"
                   :type :checkbox)))
 
-
 (lazy-slot primary-mass ((s real-profile-source))
   1.0)
 
@@ -45,7 +44,10 @@
              :accessor v-column)
    (i-column :initform 2
              :initarg :i-column
-             :accessor i-column)))
+             :accessor i-column)
+   (current-frame :initform nil)
+   (frame-selected :initform nil)
+   (frame-size :initform 1)))
 
 (defclass-f file-selector-item (omg-widget)
   ((data :accessor data
@@ -102,9 +104,11 @@
   (make-instance 'file-selector :source s))
 
 (defmethod-f remake-profiles ((s real-profile-source))
-  (with-no-updates (trail s)
-    (map nil #'remake-profile (items (files s))))
-  (setf (slot-value s 'denoise-level) 0)
+  (with-slots (trail denoise-level files) s
+    (with-slots (items) files
+      (with-no-updates trail
+        (map nil #'remake-profile items))))
+  (setf denoise-level 0)
   (redraw s))
 
 (defmethod-f source-loaded ((s real-profile-source)))
@@ -159,153 +163,176 @@
     (redraw parent)))
 
 (defmethod-f remake-profile ((fi file-selector-item))
-  (let* ((loaded (loaded fi))
-         (dat (if loaded (data fi)))
-         (body (mapcar #'cdr (remove-if-not (lambda (x) (equal (car x) :body)) dat)))
-         (phase (phase fi))
-         (parent (parent fi))
-         (max-v (max-v (params (source parent))))
-         (ofs (offset (source parent))))
-    (when (and (slot-boundp fi 'profile)
-               (or (not loaded) (not (enabled fi)) (not phase)))
-      (remove-profile (source parent) (profile fi))
-      (slot-makunbound fi 'profile))
-    (when (and (enabled fi) phase)
-      (let ((dat (loop for p in body when (and (>= (car p) (- max-v))
-                                               (<= (car p) max-v))
-                   collect p)))
-        (let ((phase (if phase (- phase (floor phase)))))
-          (if (slot-boundp fi 'profile)
-              (with-slots (profile) fi
-                (setf (slot-value profile 'data) dat
-                      (slot-value profile 'phase) phase)
-                (update-profile-plots profile (source parent)))
-              (add-profile (source parent)
-                (setf (slot-value fi 'profile)
-                      (make-instance 'profile :phase phase :data dat :params (params (source parent)))))))))))
+  (with-slots (loaded phase parent) fi
+    (with-slots (current-frame frame-selected) parent
+      (let* ((dat (if loaded (data fi)))
+             (body (mapcar #'cdr (remove-if-not (lambda (x) (equal (car x) :body)) dat)))
+             (max-v (max-v (params (source parent))))
+             (ofs (offset (source parent))))
+        (when (and (slot-boundp fi 'profile)
+                   (or (not loaded) (not (enabled fi)) (not phase)
+                       (and frame-selected (not (position fi current-frame)))))
+          (remove-profile (source parent) (profile fi))
+          (slot-makunbound fi 'profile))
+        (when (and (enabled fi) phase
+                   (or (not frame-selected)
+                       (position fi current-frame)))
+          (let ((dat (loop for p in body when (and (>= (car p) (- max-v))
+                                                   (<= (car p) max-v))
+                       collect p)))
+            (let ((phase (if phase (- phase (floor phase)))))
+              (if (slot-boundp fi 'profile)
+                  (with-slots (profile) fi
+                    (setf (slot-value profile 'data) dat
+                          (slot-value profile 'phase) phase)
+                    (update-profile-plots profile (source parent)))
+                  (add-profile (source parent)
+                    (setf (slot-value fi 'profile)
+                          (make-instance 'profile :phase phase :data dat :params (params (source parent)))))))))))))
 
 
 (defmethod-f render-widget ((fi file-selector-item))
-  (setf (slot-value fi 'root)
-        (let* ((loaded (loaded fi))
-               (dat (if loaded (data fi)))
-               (body (mapcar #'cdr (remove-if-not (lambda (x) (equal (car x) :body)) dat)))
-               (phase (phase fi))
-               (parent (parent fi))
-               (norm (and loaded (not (= (i-column parent) (v-column parent))) phase))
-               (enabled (enabled fi))
-               (clr1 "rgb(193, 253, 217)")
-               (clr2 "rgb(255, 195, 195)")
-               (clr3 "rgb(195, 195, 195)")
-               (bgcol (if enabled (if norm clr1 clr2) clr3))
-               (name (name fi))
-               (tdl nil)
-               (state phase))
-          (labels ((upd (ev)
-                     (remake-profile fi)
-                     (redraw (source (parent fi))))
-                   (rm (ev)
-                     (remove-file fi))
-                   (set-b-state (&optional init)
-                   ;   (setf (jscl::oget but "innerHTML") (if (and state (not init)) "update" "remove"))
-                   ;   (setf (jscl::oget but "onclick") (if (and state (not init)) #'upd #'rm))
-                   ;   (setf (jscl::oget but "style" "background") (if state clr1 clr2))
-                     (loop for td in tdl do
-                       (setf (jscl::oget td "style" "background") (if enabled (if state clr1 clr2) clr3))))
-                   (make-td (&rest args)
-                     (let ((td (apply #'create-element (cons "td" args))))
-                       (push td tdl)
-                       td)))
-            (set-b-state t)
-            (create-element "tr"
-              :append-element
-                (make-td :|innerHTML| name
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol
-                         :|style.textDecorationStyle| "dashed"
-                         :|style.textDecorationLine| "underline"
-                         :|style.textDecorationThicknes| "1.75pt"
-                         :|style.color| "blue")
-              :append-element
-                (make-td :|innerHTML| (if loaded
-                                          (format nil "~A" (length (remove-if-not (lambda (x) (equal (car x) :hdr)) dat)))
-                                          "loading...")
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol)
-              :append-element
-                (make-td :|innerHTML| (if loaded
-                                          (format nil "~A" (length body))
-                                          "loading...")
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol)
-              :append-element
-                (make-td :|innerHTML| (if loaded
-                                          (format nil "~A" (length (remove-if-not (lambda (x) (equal (car x) :foot)) dat)))
-                                          "loading...")
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol)
-              :append-element
-                (make-td :|innerHTML| (if loaded
-                                          (format nil "~A ... ~A"
-                                            ((jscl::oget (apply #'min (mapcar #'car body)) "toFixed") 3)
-                                            ((jscl::oget (apply #'max (mapcar #'car body)) "toFixed") 3))
-                                          "loading...")
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol)
-              :append-element
-                (make-td :|innerHTML| (if loaded
-                                          (format nil "~A ... ~A"
-                                            ((jscl::oget (apply #'min (mapcar #'cdr body)) "toFixed") 3)
-                                            ((jscl::oget (apply #'max (mapcar #'cdr body)) "toFixed") 3))
-                                          "loading...")
-                         :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol)
-              :append-element
-                (make-td :|style.padding| "0.25em 1em"
-                         :|style.background| bgcol
+  (with-slots (parent loaded phase enabled name) fi
+    (with-slots (current-frame frame-selected) parent
+      (setf (slot-value fi 'root)
+            (let* ((dat (if loaded (data fi)))
+                   (body (mapcar #'cdr (remove-if-not (lambda (x) (equal (car x) :body)) dat)))
+                   (norm (and loaded (not (= (i-column parent) (v-column parent))) phase))
+                   (clr1 "rgb(193, 253, 217)")
+                   (clr2 "rgb(255, 195, 195)")
+                   (clr3 "rgb(195, 195, 195)")
+                   (bgcol (if enabled (if norm clr1 clr2) clr3))
+                   (tdl nil)
+                   (state phase))
+
+              (labels ((upd (ev)
+                         (remake-profile fi)
+                         (redraw (source (parent fi))))
+                       (rm (ev)
+                         (remove-file fi))
+                       (set-b-state (&optional init)
+                       ;   (setf (jscl::oget but "innerHTML") (if (and state (not init)) "update" "remove"))
+                       ;   (setf (jscl::oget but "onclick") (if (and state (not init)) #'upd #'rm))
+                       ;   (setf (jscl::oget but "style" "background") (if state clr1 clr2))
+                         (loop for td in tdl do
+                           (setf (jscl::oget td "style" "background") (if enabled (if state clr1 clr2) clr3))))
+                       (make-td (&rest args)
+                         (let ((td (apply #'create-element (cons "td" args))))
+                           (push td tdl)
+                           td)))
+                (set-b-state t)
+                (create-element "tr" :|style.borderRight| (if (and frame-selected (position fi current-frame)) "2px solid red" "")
+                                     :|style.borderLeft| (if (and frame-selected (position fi current-frame)) "2px solid red" "")
+                                     :|style.borderTop| (if (and frame-selected (equal fi (car (last current-frame)))) "2px solid red" "")
+                                     :|style.borderBottom| (if (and frame-selected (equal fi (car current-frame))) "2px solid red" "")
                   :append-element
-                    (with-self inp
-                      (labels ((upd (ev)
-                                 (let* ((val (jscl::oget inp "value"))
-                                        (v (js-parse-float val)))
-                                   (when (and (not (equal val "")) v (not (is-nan v)))
-                                     (setf phase v)
-                                     (setf (slot-value fi 'phase) v)
-                                     (setf state t)
-                                     (set-b-state)))
-                                 t))
-                        (create-element "input" :|type| "text"
-                                                :|placeholder| "set phase"
-                                                :|size| "7"
-                                                :|style.marginLeft| "1em"
-                                                :|style.marginRight| "1em"
-                                                :|style.textAlign| "center"
-                                                :|value| (if phase phase "")
-                          :|onchange| #'upd
-                          :|onkeyup| #'upd
-                          :|onkeydown| #'upd
-                          :|onpaste| #'upd
-                          :|ondrop| #'upd))))
-              :append-element
-                (create-element "td"
+                    (make-td :|innerHTML| name
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol
+                             :|style.textDecorationStyle| "dashed"
+                             :|style.textDecorationLine| "underline"
+                             :|style.textDecorationThicknes| "1.75pt"
+                             :|style.color| "blue")
                   :append-element
-                    (with-self box
-                      (create-element "input" :|type| "checkbox"
-                                              :|checked| enabled
-                        :|onclick| (lambda (ev)
-                                     (let ((st (jscl::oget box "checked")))
-                                       (setf enabled (setf (slot-value fi 'enabled) st))
-                                       (remake-profile fi)
-                                       (redraw (source (parent fi)))
-                                       (set-b-state)
-                                       ; (redraw (trail (source (parent fi))))
-                                       t)))))
-              :append-element
-                (create-element "td" :|style.padding| "0.25em 1em"
-                  :append-element (create-element "button" :|innerHTML| "update"
-                                                           :|onclick| #'upd)
-                  :append-element (create-element "button" :|innerHTML| "remove"
-                                                           :|onclick| #'rm)))))))
+                    (make-td :|innerHTML| (if loaded
+                                              (format nil "~A" (length (remove-if-not (lambda (x) (equal (car x) :hdr)) dat)))
+                                              "loading...")
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol)
+                  :append-element
+                    (make-td :|innerHTML| (if loaded
+                                              (format nil "~A" (length body))
+                                              "loading...")
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol)
+                  :append-element
+                    (make-td :|innerHTML| (if loaded
+                                              (format nil "~A" (length (remove-if-not (lambda (x) (equal (car x) :foot)) dat)))
+                                              "loading...")
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol)
+                  :append-element
+                    (make-td :|innerHTML| (if loaded
+                                              (format nil "~A ... ~A"
+                                                ((jscl::oget (apply #'min (mapcar #'car body)) "toFixed") 3)
+                                                ((jscl::oget (apply #'max (mapcar #'car body)) "toFixed") 3))
+                                              "loading...")
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol)
+                  :append-element
+                    (make-td :|innerHTML| (if loaded
+                                              (format nil "~A ... ~A"
+                                                ((jscl::oget (apply #'min (mapcar #'cdr body)) "toFixed") 3)
+                                                ((jscl::oget (apply #'max (mapcar #'cdr body)) "toFixed") 3))
+                                              "loading...")
+                             :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol)
+                  :append-element
+                    (make-td :|style.padding| "0.25em 1em"
+                             :|style.background| bgcol
+                      :append-element
+                        (with-self inp
+                          (labels ((upd (ev)
+                                     (let* ((val (jscl::oget inp "value"))
+                                            (v (js-parse-float val)))
+                                       (when (and (not (equal val "")) v (not (is-nan v)))
+                                         (setf phase v)
+                                         (setf (slot-value fi 'phase) v)
+                                         (setf state t)
+                                         (set-b-state)))
+                                     t))
+                            (create-element "input" :|type| "text"
+                                                    :|placeholder| "set phase"
+                                                    :|size| "7"
+                                                    :|style.marginLeft| "1em"
+                                                    :|style.marginRight| "1em"
+                                                    :|style.textAlign| "center"
+                                                    :|value| (if phase phase "")
+                              :|onchange| #'upd
+                              :|onkeyup| #'upd
+                              :|onkeydown| #'upd
+                              :|onpaste| #'upd
+                              :|ondrop| #'upd))))
+                  :append-element
+                    (with-slots (source) parent
+                      (with-slots (median-chi) source
+                        (make-td :|style.padding| "0.25em 1em"
+                                 :|style.background| (if (and (slot-boundp source 'median-chi)
+                                                              median-chi
+                                                              (slot-boundp fi 'profile)
+                                                              (profile fi))
+                                                         (with-slots (chi) (profile fi)
+                                                           (if (and chi (> chi (* 2 median-chi)))
+                                                               "rgb(255, 195, 195)"
+                                                               bgcol))
+                                                         bgcol)
+                          :append-element
+                            (if (and (slot-boundp fi 'profile) (profile fi))
+                                (with-slots (chi) (profile fi)
+                                  (if chi
+                                      (format nil "~A" ((jscl::oget (/ chi (if median-chi median-chi 1)) "toPrecision") 2))
+                                      "-"))
+                                "-"))))
+                  :append-element
+                    (create-element "td"
+                      :append-element
+                        (with-self box
+                          (create-element "input" :|type| "checkbox"
+                                                  :|checked| enabled
+                            :|onclick| (lambda (ev)
+                                         (let ((st (jscl::oget box "checked")))
+                                           (setf enabled (setf (slot-value fi 'enabled) st))
+                                           (remake-profile fi)
+                                           (redraw (source (parent fi)))
+                                           (set-b-state)
+                                           ; (redraw (trail (source (parent fi))))
+                                           t)))))
+                  :append-element
+                    (create-element "td" :|style.padding| "0.25em 1em"
+                      :append-element (create-element "button" :|innerHTML| "update"
+                                                               :|onclick| #'upd)
+                      :append-element (create-element "button" :|innerHTML| "remove"
+                                                               :|onclick| #'rm)))))))))
 
 (defmethod-f render-widget ((fs file-selector))
   (setf (slot-value fs 'root)
@@ -318,7 +345,7 @@
                              (redraw fs)
                              v1)))))
           (create-element "table" :|style.margin| "1em"
-                                  :|style.borderSpacing| "0.2em"
+                                  :|style.borderCollapse| "collapse"
             :append-element
               (create-element "tr"
                  :append-element (create-element "td" :|innerHTML| "File"
@@ -355,9 +382,16 @@
                                                       :|style.background| "rgb(255,232,201)"
                                                       :|style.padding| "0.25em 1em"
                                                       :|style.textAlign| "center")
+                 :append-element (create-element "td" :|innerHTML| "&chi;<sup>2</sup>"
+                                                      :|style.background| "rgb(255,232,201)"
+                                                      :|style.padding| "0.25em 1em"
+                                                      :|style.textAlign| "center")
                  :append-element (create-element "td")
                  :append-element (create-element "td"))
             :append-elements (mapcar #'render-widget (items fs))))))
+
+(defmethod-f update-after-step ((s real-profile-source))
+  (redraw (files s)))
 
 (defmethod-f render-widget :after ((s real-profile-source))
   (append-element
@@ -428,7 +462,104 @@
                                             (redraw fs)
                                             (remake-profiles s))))
                                   ((jscl::oget rd "readAsText") (jscl::oget fil "files" 0)))))))
-
+        :append-element
+          (with-slots (files) s
+            (with-slots (current-frame frame-selected frame-size) files
+              (let ((from-inp
+                      (with-self inp
+                        (create-element "input" :|type| "text"
+                                                :|placeholder| "phase"
+                                                :|size| "12"
+                                                :|style.marginLeft| "1em"
+                                                :|style.marginRight| "1em"
+                                                :|value| (if (car current-frame)
+                                                             (phase (car current-frame))
+                                                             (let* ((fis (remove-if-not (lambda (f) (phase f)) (items files))))
+                                                               (if fis
+                                                                   (format nil "~A" (car (sort (mapcar #'phase fis) #'<)))
+                                                                   "")))
+                          :|onfocus| (lambda (ev)
+                                       (let* ((fis (remove-if-not (lambda (f) (phase f)) (items files))))
+                                         (when (and fis (equal (jscl::oget inp "value") ""))
+                                           (setf (jscl::oget inp "value")
+                                                 (format nil "~A" (car (sort (mapcar #'phase fis) #'<))))
+                                           ((jscl::oget inp "select"))))))))
+                    (size-inp
+                      (with-self inp
+                        (create-element "input" :|type| "text"
+                                                :|placeholder| "orbital periods"
+                                                :|size| "12"
+                                                :|style.marginLeft| "1em"
+                                                :|style.marginRight| "1em"
+                                                :|value| (format nil "~A" frame-size)
+                            :|onfocus| (lambda (ev)
+                                         (when (equal (jscl::oget inp "value") "")
+                                           (setf (jscl::oget inp "value") "1")
+                                           ((jscl::oget inp "select"))))))))
+                (labels ((set-frame (from size)
+                           (setf current-frame
+                                 (sort (remove-if-not (lambda (fi)
+                                                        (with-slots (phase) fi
+                                                          (and (>= phase from)
+                                                               (<= phase (+ from size)))))
+                                                      (items files))
+                                       #'<
+                                       :key #'phase))
+                           (setf frame-size size)
+                           (setf frame-selected t)
+                           (remake-profiles s)))
+                  (create-element "div" :|style.width| "100%"
+                                        ;;:|style.display| "inline-block"
+                                        :|style.marginTop| "1em"
+                    :append-element "Start:"
+                    :append-element from-inp
+                    :append-element "duration:"
+                    :append-element size-inp
+                    :append-element
+                      (create-element "button" :|innerHTML| "&lt;&lt;"
+                                               :|style.width| "5em"
+                        :|onclick| (lambda (ev)
+                                     (with-slots (items) files
+                                       (when current-frame
+                                         (let* ((fst (phase (car current-frame)))
+                                                (prv (car (sort (remove-if-not (lambda (fi) (< (phase fi) fst)) items) #'> :key #'phase))))
+                                           (when prv
+                                             (set-frame (phase prv)
+                                                        frame-size)))))))
+                    :append-element
+                      (create-element "button" :|innerHTML| "select frame"
+                                               :|style.marginLeft| "0.5em"
+                                               :|style.marginRight| "0.5em"
+                        :|onclick| (lambda (ev)
+                                     (let* ((from (jscl::oget from-inp "value"))
+                                            (from (js-parse-float from))
+                                            (size (jscl::oget size-inp "value"))
+                                            (size (js-parse-float size)))
+                                       (when (and (not (equal from "")) from (not (is-nan from))
+                                                  (not (equal size "")) size (not (is-nan size)))
+                                         (set-frame from size)))))
+                    :append-element
+                      (create-element "button" :|innerHTML| "&gt;&gt;"
+                                               :|style.width| "5em"
+                        :|onclick| (lambda (ev)
+                                     (with-slots (items) files
+                                       (when current-frame
+                                         (let* ((lst (phase (car (last current-frame))))
+                                                (nxt (car (sort (remove-if-not (lambda (fi) (> (phase fi) lst)) items) #'< :key #'phase)))
+                                                (fst (when nxt
+                                                       (car (sort (remove-if-not
+                                                                    (lambda (fi) (>= (phase fi) (- (phase nxt) frame-size)))
+                                                                    items)
+                                                                  #'<
+                                                                  :key #'phase)))))
+                                           (when fst
+                                             (set-frame (phase fst) frame-size)))))))
+                    :append-element
+                      (create-element "button" :|innerHTML| "deselect frame"
+                                               :|style.marginLeft| "1em"
+                        :|onclick| (lambda (ev)
+                                     (setf frame-selected nil)
+                                     (remake-profiles s))))))))
         :append-element (render-widget fs)))
     (src-root s)))
 

@@ -12,6 +12,7 @@
    (max-d)
    (prof-mean)
    (offset)
+   (chi :inintofm nil)
    (denoised-data :initform nil
                   :accessor denoised-data)
    (phase-weight :initform 1
@@ -25,7 +26,6 @@
              :accessor cur-plot)
    (den-plot :initform nil
              :accessor den-plot)
-   (denoised-plot :initform nil)
    (ads-cache)))
 
 
@@ -40,7 +40,11 @@
    (max-d)
    (trail)
    (solver)
-   (denoise-level :initform 0)))
+   (median-chi :initform nil)
+   (denoise-level :initform 0)
+   (img-min :initform 0)
+   (img-max :initform 1)
+   (log-scale :initform nil)))
 
 (defclass-f profile-source-widget (omg-widget profile-source)
   ((src-root :accessor src-root)
@@ -281,9 +285,10 @@
         (nzt (noize-treshold slv))
         (ofs (offset s)))
     (loop for p in (profiles s) sum
-      (with-slots (data denoised-data) p
-        (* (phase-weight p) (loop for i in (mapcar #'cdr (if denoised-data denoised-data data)) and ci in (cur-i p slv) and pm in (prof-mean p s) sum
-                              (sqr (- i ci))))))))
+      (with-slots (data denoised-data chi) p
+        (setf chi
+              (* (phase-weight p) (loop for i in (mapcar #'cdr (if denoised-data denoised-data data)) and ci in (cur-i p slv) and pm in (prof-mean p s) sum
+                                    (sqr (- i ci)))))))))
 
 (defclass-f denoise-progress (modal-dialog-window)
   ((bar)))
@@ -395,6 +400,7 @@
   (slot-makunbound s 'chi)
   (map nil #'soft-reset (profiles s)))
 
+(defmethod-f update-after-step ((s profile-source)))
 
 (defmethod-f update-profile-plots ((p profile) (s profile-source) &key show-cur-i)
   (let ((offset (offset p)))
@@ -451,6 +457,7 @@
   (setf (slot-value s 'profiles) (remove-if (lambda (x) (eql x p)) (profiles s)))
   (if (and (slot-boundp p 'plot) (plot p)) (remove-plot (plot p)))
   (if (and (slot-boundp p 'cur-plot) (cur-plot p)) (remove-plot (cur-plot p)))
+  (if (and (slot-boundp p 'den-plot) (den-plot p)) (remove-plot (den-plot p)))
   (reset s))
 
 (defmethod-f get-controls ((s profile-source) node &optional img matrix)
