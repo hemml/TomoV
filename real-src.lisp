@@ -341,12 +341,12 @@
   (setf (slot-value fs 'root)
         (labels ((mk-sv (slot)
                    (lambda (val)
-                         (let ((v1 (js-parse-float val)))
-                           (when (and v1 (not (is-nan v1)) (= v1 (floor v1)))
-                             (setf (slot-value fs slot) v1)
-                             (loop for i in (items fs) do (reload i))
-                             (redraw fs)
-                             v1)))))
+                     (let ((v1 (js-parse-float val)))
+                       (when (and v1 (not (is-nan v1)) (= v1 (floor v1)))
+                         (setf (slot-value fs slot) v1)
+                         (loop for i in (items fs) do (reload i))
+                         (redraw fs)
+                         v1)))))
           (create-element "table" :|style.margin| "1em"
                                   :|style.borderCollapse| "collapse"
             :append-element
@@ -423,13 +423,15 @@
                                         :|style.width| "50%"
                                         :|style.marginLeft| "2em"
                   :|onchange| (lambda (ev)
-                                (setf (slot-value fs 'items)
-                                      (concatenate 'list
-                                        (loop for f across (jscl::oget fil "files")
-                                          collect (make-instance 'file-selector-item
-                                                                 :file f
-                                                                 :parent fs))
-                                        (items fs)))
+                                (with-slots (items) fs
+                                  (setf items
+                                        (concatenate 'list
+                                          (loop for f across (jscl::oget fil "files")
+                                            collect
+                                             (make-instance 'file-selector-item
+                                                            :file f
+                                                            :parent fs))
+                                          items)))
                                 (redraw fs)))))
         :append-element
           (create-element "div" :|style.width| "100%"
