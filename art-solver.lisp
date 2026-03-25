@@ -15,8 +15,8 @@
    (noise-treshold :initform 1.0
                    :desc "Noise theshold"
                    :type :number)
-   (noize-balance :initform 0.5
-                  :desc "Noize balance"
+   (noise-balance :initform 0.5
+                  :desc "Noise balance"
                   :type :number)
    (low-snr :initform nil
             :accessor low-snr
@@ -115,6 +115,7 @@
            (ny (array-dimension m 1))
            (m1 (make-array (list nx ny)))
            (profs (profiles (source s)))
+           (nprofs (length profs))
            (grad)
            (grad-prof-cnt)
            (grad-copy)
@@ -131,12 +132,18 @@
            (lsnr (low-snr s))
            (nzt (noise-treshold s))
            (ofs (offset (source s)))
-           (all-data (mapcar (lambda (w d c pw ads npr)
+           (all-data (mapcar (lambda (w d c pw ads npr pn)
                                (list w
                                      (- d c)
                                      pw
                                      ads
-                                     npr))
+                                     npr
+                                     1
+                                     ; (/ 1 (/ (if (> d 0)
+                                     ;             d
+                                     ;             ofs)
+                                     ;         (car ads)))))
+                                     pn))
                              (apply #'concatenate (cons 'list prof-weights))
                              (apply #'concatenate (cons 'list prof-dats))
                              (apply #'concatenate (cons 'list prof-cur-i))
@@ -144,12 +151,12 @@
                                (mapcar (constantly (phase-weight p)) (get-data p)))
                              (loop for p in profs append
                                (ads-profile p s))
-                             (loop for p in profs and i below (length profs) append
-                               (mapcar (constantly i) (get-data p)))))
+                             (loop for p in profs and i below nprofs append
+                               (mapcar (constantly i) (get-data p)))
+                             (loop for i below nprofs and p in profs append (mapcar (constantly i) (get-data p)))))
            (progress-cnt 0)
            (grad-cnt 0)
-           (adl (length all-data))
-           (nprofs (length profs)))
+           (adl (length all-data)))
       (with-slots (noise-balance) s
         (funcall bar-cb 0.1)
         (setf grad (make-array (list (* nx ny)) :initial-element 0)
@@ -158,7 +165,7 @@
           (setf grad-prof-cnt (make-array (list (* nx ny)) :initial-element 0)
                 grad-pt-cnt (make-array (list (* nx ny)) :initial-element 0)))
         (loop for ad in all-data sum
-          (destructuring-bind (w dc pw ads npr) ad
+          (destructuring-bind (w dc pw ads npr d np) ad
             (incf grad-cnt)
             (if (> (incf progress-cnt) 100)
                 (let ((tim1 ((jscl::oget (jscl::make-new (winref "Date")) "getTime"))))
@@ -169,21 +176,32 @@
                         (funcall bar-cb (+ 0.1 (* 0.7 (/ grad-cnt adl))))))))
             (loop for i below (length w) by 2 sum
               (let* ((wl (* (car ads) (aref w (+ i 1)) step))
-                     (nv (* pw (- (sqr wl) (* 2 wl dc))))
+                     (nv (* pw d (- (sqr wl) (* 2 wl dc))))
                      (idx (aref w i)))
                 (setf (aref grad idx)
                       (+ (aref grad idx) nv))
                 (when lsnr
                   (incf (aref grad-pt-cnt idx))
-                  (if (< dc 0) (incf (aref grad-prof-cnt idx))))
+                  (when (> dc 0)
+                    (incf (aref grad-prof-cnt idx))))
                 nv))))
         (when lsnr
-          (loop for i below (* nx ny) when (and (< (aref grad-prof-cnt i) (* noize-balance (aref grad-pt-cnt i)))
-                                                (> (aref grad i) 0))
-            do (setf (aref grad i) (* -1 (aref grad i)))))
-        (jslog "X6")
-        (let ((grad-l (/ 1.0 (sqrt (loop for i below (* nx ny) sum (expt (aref grad i) 2)))))
-              (cnt 0))
+          (loop for i below (* nx ny) when (or (and (< (aref grad-prof-cnt i) (* noise-balance (aref grad-pt-cnt i)))
+                                                    (< (aref grad i) 0))
+                                               (and (> (aref grad-prof-cnt i) (* noise-balance (aref grad-pt-cnt i)))
+                                                    (> (aref grad i) 0)))
+            do (setf (aref grad i) 0))
+
+          (let* ((cnt 0)
+                 (med (loop for i below (* nx ny) when (< (aref grad i) 0) do (incf cnt) and sum (abs (aref grad i))))
+                 (med (if (> cnt 0) (/ med cnt)))
+                 (mmed (if med (* -1 med))))
+            (when med
+              (loop for i below (* nx ny) when (> (aref grad i) med) do (setf (aref grad i) med)
+                                          when (< (aref grad i) mmed) do (setf (aref grad i) mmed)))))
+        (let* ((grad-l (sqrt (loop for i below (* nx ny) sum (expt (aref grad i) 2))))
+               (grad-l (if (> grad-l 0) (/ 1 grad-l) 0))
+               (cnt 0))
           (funcall bar-cb 0.75)
           (labels ((apply-grad ()
                      (loop for i below (* nx ny) do
@@ -203,8 +221,7 @@
                       (cnt 0))
                   (loop for i below (* nx ny) when (>= (aref matrix i) max) do
                     (setf (aref matrix i) (* nzt max))
-                    (incf cnt))
-                  (jslog "CUT:" cnt))))
+                    (incf cnt)))))
             (when (> (chi (source s) s) chi)
               (setf (slot-value s 'matrix) m)
               (soft-reset (source s)))
@@ -303,8 +320,7 @@
                                                      (setf old-adsp (map 'vector #',fn adsp))
                                                      (apply-grad)))
                                                  (when (< delta 1.0)
-                                                   (setf delta 1.1)))
-                                               (jslog "CHI1:" (chi (source s) s) c0 adelta (- (chi (source s) s) c0)))
+                                                   (setf delta 1.1))))
                                            ; (loop for i below ldsp do
                                            ;   (setf (,fn (aref adsp i))
                                            ;         (+ (* smooth-cf (if (> i 0) (aref old-adsp (1- i)) ,ddef))
@@ -314,7 +330,6 @@
                                            (if ,gauss
                                                (progn
                                                  (when (> adelta 1e-5)
-                                                   (jslog "SET!!!")
                                                    (setf (car gcfs)   (+ (car gcfs)   (* -1 adelta step grad-l (aref ,grad 0)))
                                                          (cadr gcfs)  (+ (cadr gcfs)  (* -1 adelta step grad-l (aref ,grad 1)))
                                                          (caddr gcfs) (+ (caddr gcfs) (* -1 adelta step grad-l (aref ,grad 2)))))
@@ -345,13 +360,13 @@
 
             (if (> delta 1.0) (setf delta (* 1.1 delta)))
             (setf (slot-value s 'delta) delta)
-            (values (slot-value s 'matrix)
-                    (chi (source s) s)
-                    delta
-                    (loop for p in profs collect (cur-i p s))
-                    (absorbtion-profile s)
-                    (gauss-abs-cfs s)
-                    (loop for p in profs collect (slot-value p 'chi)))))))))
+            (return-from calc-step (values (slot-value s 'matrix)
+                                           (chi (source s) s)
+                                           delta
+                                           (loop for p in profs collect (cur-i p s))
+                                           (absorbtion-profile s)
+                                           (gauss-abs-cfs s)
+                                           (loop for p in profs collect (slot-value p 'chi))))))))))
 
 (defmethod-f perform-step ((s art-solver) bar-cb cb)
   (register-main-lambda bar-cb)
@@ -382,19 +397,20 @@
           (values (cur-step s) m chi (/ delta-sum n) cur-i adsp (/ adelta-sum n) (/ idelta-sum n) gcfs chis))))
     (progn
       (funcall bar-cb 1)
-      (let ((m0 (matrix s)))
-        (loop for i below (apply #'* (array-dimensions m)) do (setf (aref m0 i) (aref m i))))
-      (setf (slot-value s 'solver-chi) chi)
-      (setf (slot-value s 'delta) delta)
-      (setf (slot-value s 'cur-step) stp)
-      (setf (slot-value s 'absorbtion-profile) adp)
-      (setf (slot-value s 'ads-delta) adelta)
-      (setf (slot-value s 'emm-delta) idelta)
-      (setf (slot-value s 'gauss-abs-cfs) gcfs)
-      (loop for p in (profiles (source s)) and i in iis and c in chis do
-        (setf (slot-value p 'cur-i) i)
-        (setf (slot-value p 'chi) c))
-      (setf (slot-value (source s) 'median-chi) (nth (floor (length chis) 2) (sort chis #'<)))
+      (when t ;;chi
+        (let ((m0 (matrix s)))
+          (loop for i below (apply #'* (array-dimensions m)) do (setf (aref m0 i) (aref m i))))
+        (setf (slot-value s 'solver-chi) chi)
+        (setf (slot-value s 'delta) delta)
+        (setf (slot-value s 'cur-step) stp)
+        (setf (slot-value s 'absorbtion-profile) adp)
+        (setf (slot-value s 'ads-delta) adelta)
+        (setf (slot-value s 'emm-delta) idelta)
+        (setf (slot-value s 'gauss-abs-cfs) gcfs)
+        (loop for p in (profiles (source s)) and i in iis and c in chis do
+          (setf (slot-value p 'cur-i) i)
+          (setf (slot-value p 'chi) c))
+        (setf (slot-value (source s) 'median-chi) (nth (floor (length chis) 2) (sort chis #'<))))
       (funcall cb))))
 
 
@@ -477,19 +493,19 @@
                                      :|style.height| "2em"
                                      :|style.verticalAlign| "middle"
                                      :|innerHTML|
-                                       (prog1
-                                         (if (slot-boundp (solver i) 'solver-chi)
-                                             (format nil "~A~A"
-                                               ((jscl::oget (solver-chi (solver i)) "toPrecision") 3)
-                                               (let ((dl (if (and (last-chi i)
-                                                                  (cur-step (solver i))
-                                                                  (> (cur-step (solver i)) 0))
-                                                             (- (solver-chi (solver i)) (last-chi i)))))
-                                                 (setf (slot-value i 'last-chi) (solver-chi (solver i)))
-                                                 (if dl
-                                                     (format nil " (~A)" ((jscl::oget dl "toPrecision") 3))
-                                                     "")))
-                                             "")))))))
+                                       (if (and (slot-boundp (solver i) 'solver-chi)
+                                                (solver-chi (solver i)))
+                                           (format nil "~A~A"
+                                             ((jscl::oget (solver-chi (solver i)) "toPrecision") 3)
+                                             (let ((dl (if (and (last-chi i)
+                                                                (cur-step (solver i))
+                                                                (> (cur-step (solver i)) 0))
+                                                           (- (solver-chi (solver i)) (last-chi i)))))
+                                               (setf (slot-value i 'last-chi) (solver-chi (solver i)))
+                                               (if dl
+                                                   (format nil " (~A)" ((jscl::oget dl "toPrecision") 3))
+                                                   "")))
+                                           ""))))))
 
 (defmethod-f render-widget :after ((z zoomed-images))
   (let* ((ctrls (cons (root (img z)) (ctrls z)))
@@ -590,15 +606,15 @@
                                                (min 1 (max 0 (/ (- (aref matrix i) mi)
                                                                 (- ma mi))))))))
                                  (loop for i below (* resolution resolution) do
-                                   (setf (aref norm-matrix i) mi)))
-                               (format t "~A" norm-matrix)))))
+                                   (setf (aref norm-matrix i) mi)))))))
                   (let* ((img (make-instance 'saveable-graph :xmin (- max-v) :xmax max-v
                                                              :ymin (- max-v) :ymax max-v
                                                              :scales '(:left :right :top :bottom)
                                                              :preserve-aspect-ratio t
                                                              :xcaption "V (km/s)"
                                                              :ycaption (create-element "span" :|style.whiteSpace| "nowrap" :|innerHTML| "V (km/s)")
-                                                             :name (format nil "~A tomogram" (name (source (solver s))))))
+                                                             :name (lambda ()
+                                                                     (get-tomogram-name (source (solver s))))))
                          (ctrls (get-controls source (graph img) img norm-matrix))
                          (plt (make-instance 'matrix-plot :matrix norm-matrix :norm nil
                                                           :xmin (xmin img) :xmax (xmax img)
