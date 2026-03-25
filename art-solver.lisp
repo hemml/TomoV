@@ -834,15 +834,24 @@
                                                          (setf delta 10000)
                                                          (redraw inf)
                                                          (let* ((profs (profiles source))
-                                                                (profs `(,@(last profs) ,@profs ,(car profs)))
-                                                                (phases (mapcar #'phase profs))
-                                                                (phases `(,(- (car phases) 1)
-                                                                          ,@(subseq (cdr phases) 0 (- (length phases) 2))
-                                                                          ,(+ (car (last phases)) 1))))
-                                                           (loop for pl on profs and phl on phases
-                                                             when (cddr pl) do
-                                                             (setf (slot-value (cadr pl) 'phase-weight)
-                                                                   (* 0.5 (- (caddr phl) (car phl)))))
+                                                                (phases (mapcar #'phase profs)))
+                                                           (labels ((mkw (profs phases &optional cache left-phase last-phase)
+                                                                      (when (and profs phases)
+                                                                        (let ((cur-phase (car phases)))
+                                                                          (cond ((or (not left-phase)
+                                                                                     (= left-phase cur-phase))
+                                                                                 (mkw (cdr profs) (cdr phases) nil cur-phase))
+                                                                                ((or (not last-phase)
+                                                                                     (= last-phase cur-phase))
+                                                                                 (mkw (cdr profs) (cdr phases) (cons (car profs) cache) left-phase cur-phase))
+                                                                                (t (let ((w (/ (* 0.5 (- cur-phase left-phase)) (length cache))))
+                                                                                     (loop for p in cache do
+                                                                                       (setf (slot-value p 'phase-weight) w))
+                                                                                     (mkw (cdr profs) (cdr phases) (list (car profs)) last-phase nil))))))))
+                                                             (mkw `(,@profs ,@profs ,@profs)
+                                                                  `(,@(mapcar (lambda (ph) (- ph 1)) phases)
+                                                                    ,@phases
+                                                                    ,@(mapcar (lambda (ph) (+ ph 1)) phases))))
                                                           (mk-step)))
                                                        (progn
                                                          (if wrk (kill wrk))
