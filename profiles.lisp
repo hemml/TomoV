@@ -280,21 +280,15 @@
         (setf (gethash v res) (* lp (loop for p in profs sum (find-v p v)))))
       res)))
 
-; (lazy-slot chi ((s profile-source) m)
-;   (let ((max-d (max-d s)))
-;     (loop for p in (profiles s) sum
-;       (loop for i in (mapcar #'cdr (data p)) and ci in (cur-i p m) and m in (prof-mean p s) sum
-;          (* (+ *noize-treshhold* (/ m max-d)) (sqr (- i ci)))))))
-
 (lazy-slot chi ((s profile-source) (slv art-solver))
   (let ((max-d (max-d s))
-        (nzt (noize-treshold slv))
         (ofs (offset s)))
     (loop for p in (profiles s) sum
       (with-slots (data denoised-data chi) p
         (setf chi
-              (* (phase-weight p) (loop for i in (mapcar #'cdr (if denoised-data denoised-data data)) and ci in (cur-i p slv) and pm in (prof-mean p s) sum
-                                    (sqr (- i ci)))))))))
+              (* (phase-weight p)
+                 (loop for i in (mapcar #'cdr (if denoised-data denoised-data data)) and
+                           ci in (cur-i p slv) and ads in (ads-profile p slv) sum (sqr (- i ci)))))))))
 
 (defclass-f denoise-progress (modal-dialog-window)
   ((bar)))
