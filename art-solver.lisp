@@ -12,8 +12,8 @@
    (emm-delta)
    (wrk :accessor wrk)
    (solver-chi)
-   (noize-treshold :initform 1.0
-                   :desc "Noize theshold"
+   (noise-treshold :initform 1.0
+                   :desc "Noise theshold"
                    :type :number)
    (noize-balance :initform 0.5
                   :desc "Noize balance"
@@ -76,7 +76,7 @@
 
 (defparameter-f *current-solver* nil)
 
-(lazy-slot noize-treshold ((s art-solver))
+(lazy-slot noise-treshold ((s art-solver))
   0.97)
 
 (lazy-slot solver-chi ((s art-solver))
@@ -129,7 +129,7 @@
            (max-d (max-d (source s)))
            (dbg (funcall bar-cb 0.07))
            (lsnr (low-snr s))
-           (nzt (noize-treshold s))
+           (nzt (noise-treshold s))
            (ofs (offset (source s)))
            (all-data (mapcar (lambda (w d c pw ads npr)
                                (list w
@@ -150,7 +150,7 @@
            (grad-cnt 0)
            (adl (length all-data))
            (nprofs (length profs)))
-      (with-slots (noize-balance) s
+      (with-slots (noise-balance) s
         (funcall bar-cb 0.1)
         (setf grad (make-array (list (* nx ny)) :initial-element 0)
               grad-cnt 0)
