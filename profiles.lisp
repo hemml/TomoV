@@ -643,7 +643,6 @@
                                                                    (redraw-config (trail s)))))
                                   :append-element
                                     (with-slots (denoise-level) s
-                                      (jslog "DL:" denoise-level)
                                       (create-element "div" :|style.marginTop| "1em"
                                         :append-element (create-element "span" :|innerHTML| "Denoise:"
                                                                                :|style.marginRight| "1em")
