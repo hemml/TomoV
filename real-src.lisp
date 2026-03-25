@@ -65,6 +65,16 @@
    (enabled :initform t
             :accessor enabled)))
 
+(defmethod-f get-tomogram-name ((s real-profile-source))
+  (with-slots (files) s
+    (with-slots (current-frame frame-selected) files
+       (if (and frame-selected current-frame)
+           (format nil "~A frame ~A" (name s)
+                                     (/ (floor (+ 0.5 (* 1000 (car (sort (mapcar #'phase current-frame) #'<)))))
+                                        1000))
+           (call-next-method)))))
+
+
 (defclass-f nulable-fld (editable-field)
   ((value)
    (cancel :initform (lambda (w)
