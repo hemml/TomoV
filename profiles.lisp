@@ -44,20 +44,19 @@
    (denoise-level :initform 0)
    (img-min :initform 0)
    (img-max :initform 1)
-   (log-scale :initform nil)))
+   (log-scale :initform nil)
+   (name :initform "new source"
+         :accessor name)))
 
 (defclass-f profile-source-widget (omg-widget profile-source)
   ((src-root :accessor src-root)
-   (name :accessor name
-         :initform nil)
    (solver :accessor solver)))
 
 (defclass-f save-dialog (modal-dialog-window)
   ((onsave :initarg :onsave
            :accessor onsave)
    (name :initarg :name
-         :accessor name
-         :initform "new data source")))
+         :accessor name)))
 
 (defclass-f delete-dialog (modal-dialog-window)
   ((src :initarg :source
@@ -65,11 +64,18 @@
 
 (defmethod-f source-loaded ((s profile-source)))
 
+(defmethod-f get-tomogram-name ((s profile-source))
+  (format nil "~A tomogram" (name s)))
+
+
 (lazy-slot offset ((s profile))
   0.0)
 
 (lazy-slot offset ((s profile-source))
   1.0)
+
+(lazy-slot name ((s profile-source))
+  "new source")
 
 (lazy-slot params ((s profile-source))
   (make-instance 'parameters))
@@ -566,15 +572,12 @@
                                                                                                  (make-js-object :|type| "application/octet-stream")))
                                                                                          (url ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "createObjectURL") blob))
                                                                                          (el (create-element "a" :|href| url
-                                                                                                                 :|download| (format nil "~A.tmv"
-                                                                                                                               (if (name s)
-                                                                                                                                   (name s)
-                                                                                                                                   "unnamed")))))
+                                                                                                                 :|download| (format nil "~A.tmv" (name s)))))
                                                                                     (append-element el)
                                                                                     ((jscl::oget el "click"))
                                                                                     (remove-element el)
                                                                                     ((jscl::oget (jscl::lisp-to-js (jscl::%js-vref "URL")) "revokeObjectURL") url))))))))
-                                  :append-element (if (name s) (name s) "New data source")
+                                  :append-element (name s)
                                   :append-element
                                     (create-element "button" :|style.display| "table-cell"
                                                              :|style.marginLeft| "1em"

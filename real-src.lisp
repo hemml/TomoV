@@ -1,9 +1,7 @@
 (in-package :tomo)
 
 (defclass-conf real-profile-source (profile-source-widget)
-  ((name :accessor name
-         :initform nil)
-   (files :accessor files)
+  ((files :accessor files)
    (primary-mass :initform 1.0
                  :desc "Primary mass (solar masses)"
                  :type :number
