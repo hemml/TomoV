@@ -234,8 +234,8 @@
                 (set-b-state t)
                 (create-element "tr" :|style.borderRight| (if (and frame-selected (position fi current-frame)) "2px solid red" "")
                                      :|style.borderLeft| (if (and frame-selected (position fi current-frame)) "2px solid red" "")
-                                     :|style.borderTop| (if (and frame-selected (equal fi (car (last current-frame)))) "2px solid red" "")
-                                     :|style.borderBottom| (if (and frame-selected (equal fi (car current-frame))) "2px solid red" "")
+                                     :|style.borderBottom| (if (and frame-selected (equal fi (car (last current-frame)))) "2px solid red" "")
+                                     :|style.borderTop| (if (and frame-selected (equal fi (car current-frame))) "2px solid red" "")
                   :append-element
                     (make-td :|innerHTML| name
                              :|style.padding| "0.25em 1em"
@@ -399,7 +399,10 @@
                                                       :|style.textAlign| "center")
                  :append-element (create-element "td")
                  :append-element (create-element "td"))
-            :append-elements (mapcar #'render-widget (items fs))))))
+            :append-elements (mapcar #'render-widget
+                                     (concatenate 'list
+                                                  (remove-if #'phase (items fs))
+                                                  (sort (remove-if-not #'phase (items fs)) #'< :key #'phase)))))))
 
 (defmethod-f update-after-step ((s real-profile-source))
   (redraw (files s)))
