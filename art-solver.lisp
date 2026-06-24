@@ -13,7 +13,7 @@
    (wrk :accessor wrk)
    (solver-chi)
    (noise-treshold :initform 1.0
-                   :desc "Noise theshold"
+                   :desc "Noise threshold"
                    :type :number)
    (noise-balance :initform 0.5
                   :desc "Noise balance"
