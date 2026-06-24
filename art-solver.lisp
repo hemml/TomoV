@@ -163,7 +163,7 @@
               grad-cnt 0)
         (when lsnr
           (setf grad-prof-cnt (make-array (list (* nx ny)) :initial-element 0)
-                grad-pt-cnt (make-array (list (* nx ny)) :initial-element 0)))
+                grad-pt-cnt   (make-array (list (* nx ny)) :initial-element 0)))
         (loop for ad in all-data sum
           (destructuring-bind (w dc pw ads npr d np) ad
             (incf grad-cnt)
@@ -186,9 +186,9 @@
                     (incf (aref grad-prof-cnt idx))))
                 nv))))
         (when lsnr
-          (loop for i below (* nx ny) when (or (and (< (aref grad-prof-cnt i) (* noise-balance (aref grad-pt-cnt i)))
+          (loop for i below (* nx ny) when (or (and (<= (aref grad-prof-cnt i) (* noise-balance (aref grad-pt-cnt i)))
                                                     (< (aref grad i) 0))
-                                               (and (> (aref grad-prof-cnt i) (* noise-balance (aref grad-pt-cnt i)))
+                                               (and (<= (aref grad-prof-cnt i) (* noise-balance (- (aref grad-prof-cnt i) (aref grad-pt-cnt i))))
                                                     (> (aref grad i) 0)))
             do (setf (aref grad i) 0))
 
